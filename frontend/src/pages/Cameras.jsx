@@ -80,6 +80,8 @@ const Cameras = () => {
   const [sortDirection, setSortDirection] = useState('asc');
   const [totalCount, setTotalCount] = useState(0);
   const [filteredCount, setFilteredCount] = useState(0);
+  const [offlineCount, setOfflineCount] = useState(0);
+  const [showOfflineOnly, setShowOfflineOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -135,6 +137,12 @@ const Cameras = () => {
       );
       setFilteredCount(activeCameras.length);
 
+      // Calculate offline camera count
+      const offlineCameras = activeCameras.filter(
+        camera => camera.connectionState && camera.connectionState !== 'CONNECTED'
+      );
+      setOfflineCount(offlineCameras.length);
+
       // Load all cameras (pagination handles display)
       setCameras(activeCameras);
       setCurrentPage(1);
@@ -166,6 +174,12 @@ const Cameras = () => {
       setSortColumn(column);
       setSortDirection('asc');
     }
+  };
+
+  // Get server name by ID
+  const getServerName = (serverId) => {
+    const server = servers.find(s => s.id === serverId);
+    return server?.name || serverId || 'N/A';
   };
 
   const SortIndicator = ({ column }) => {
@@ -209,8 +223,15 @@ const Cameras = () => {
     );
   };
 
-  // Filter cameras by search query, then sort
-  const filteredBySearch = cameras.filter(camera => matchesSearch(camera, searchQuery));
+  // Filter cameras by search query and offline status, then sort
+  const filteredBySearch = cameras.filter(camera => {
+    // First check offline filter
+    if (showOfflineOnly && camera.connectionState === 'CONNECTED') {
+      return false;
+    }
+    // Then check search query
+    return matchesSearch(camera, searchQuery);
+  });
 
   const sortedCameras = [...filteredBySearch].sort((a, b) => {
     let aVal, bVal;
@@ -246,10 +267,10 @@ const Cameras = () => {
   const endIndex = startIndex + pageSize;
   const paginatedCameras = sortedCameras.slice(startIndex, endIndex);
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, showOfflineOnly]);
 
   // Ensure current page is valid when data changes
   useEffect(() => {
@@ -286,9 +307,28 @@ const Cameras = () => {
               <Camera className="h-8 w-8 text-blue-600 dark:text-blue-400" />
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Camera Management</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {filteredCount} active cameras
-                  {totalCount !== filteredCount && ` (${totalCount - filteredCount} on standby servers excluded)`}
+                <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-wrap">
+                  <span>
+                    {filteredCount} active cameras
+                    {totalCount !== filteredCount && ` (${totalCount - filteredCount} on standby servers excluded)`}
+                  </span>
+                  {offlineCount > 0 && (
+                    <button
+                      onClick={() => {
+                        setShowOfflineOnly(!showOfflineOnly);
+                        setCurrentPage(1);
+                      }}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                        showOfflineOnly
+                          ? 'bg-red-600 text-white'
+                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50'
+                      }`}
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      {offlineCount} offline
+                      {showOfflineOnly && <X className="h-3 w-3 ml-1" />}
+                    </button>
+                  )}
                 </p>
               </div>
             </div>
@@ -590,12 +630,6 @@ const Cameras = () => {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-sm text-gray-600 dark:text-gray-400">Device Name</dt>
-                      <dd className="text-sm font-medium text-gray-900 dark:text-white">
-                        {selectedCamera.deviceName || 'N/A'}
-                      </dd>
-                    </div>
-                    <div>
                       <dt className="text-sm text-gray-600 dark:text-gray-400">IP Address</dt>
                       <dd className="text-sm font-medium text-gray-900 dark:text-white font-mono">
                         {getIpAddress(selectedCamera)}
@@ -644,9 +678,9 @@ const Cameras = () => {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-sm text-gray-600 dark:text-gray-400">Server ID</dt>
-                      <dd className="text-sm font-medium text-gray-900 dark:text-white font-mono text-xs break-all">
-                        {selectedCamera.serverId || 'N/A'}
+                      <dt className="text-sm text-gray-600 dark:text-gray-400">Server</dt>
+                      <dd className="text-sm font-medium text-gray-900 dark:text-white">
+                        {getServerName(selectedCamera.serverId)}
                       </dd>
                     </div>
                     <div className="col-span-2">

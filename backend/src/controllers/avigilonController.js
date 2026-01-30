@@ -389,3 +389,16 @@ export const logout = async (req, res) => {
     });
   }
 };
+
+// Dashboard Stats (pre-computed for faster loading)
+export const getDashboardStats = async (req, res) => {
+  try {
+    const stats = await avigilonService.getDashboardStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};

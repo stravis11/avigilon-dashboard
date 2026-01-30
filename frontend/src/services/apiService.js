@@ -52,8 +52,11 @@ const apiService = {
   getCameraById: (cameraId) => apiClient.get(`/cameras/${cameraId}`),
   getCameraStatus: (cameraId) => apiClient.get(`/cameras/${cameraId}/status`),
   updateCamera: (cameraId, settings) => apiClient.put(`/cameras/${cameraId}`, settings),
-  getCameraSnapshot: (cameraId) => 
+  getCameraSnapshot: (cameraId) =>
     `${API_BASE_URL}/cameras/${cameraId}/snapshot`,
+
+  // Dashboard
+  getDashboardStats: () => apiClient.get('/dashboard/stats'),
 };
 
 export default apiService;

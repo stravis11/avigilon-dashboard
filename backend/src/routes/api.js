@@ -32,6 +32,8 @@ import {
   testConnection,
   login,
   logout,
+  // Dashboard
+  getDashboardStats,
 } from '../controllers/avigilonController.js';
 
 const router = express.Router();
@@ -80,5 +82,8 @@ router.put('/alarms/:alarmId', updateAlarm);
 
 // Events
 router.get('/events/search', searchEvents);
+
+// Dashboard
+router.get('/dashboard/stats', getDashboardStats);
 
 export default router;

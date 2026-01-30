@@ -6,12 +6,10 @@ const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
 
 const Dashboard = () => {
   const [serverInfo, setServerInfo] = useState(null);
-  const [servers, setServers] = useState([]);
   const [sites, setSites] = useState([]);
-  const [cameras, setCameras] = useState([]);
-  const [serversLoading, setServersLoading] = useState(true);
+  const [dashboardStats, setDashboardStats] = useState(null);
   const [sitesLoading, setSitesLoading] = useState(true);
-  const [camerasLoading, setCamerasLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('checking');
   const [sortColumn, setSortColumn] = useState('name');
@@ -22,9 +20,8 @@ const Dashboard = () => {
   }, []);
 
   const loadDashboardData = async () => {
-    setServersLoading(true);
     setSitesLoading(true);
-    setCamerasLoading(true);
+    setStatsLoading(true);
     setError(null);
     setConnectionStatus('checking');
 
@@ -46,16 +43,16 @@ const Dashboard = () => {
     };
 
     // Load all data in parallel, update UI as each completes
-    // Servers (fast)
-    apiService.getServers()
+    // Dashboard stats (includes servers with pre-computed camera counts)
+    apiService.getDashboardStats()
       .then((response) => {
-        const serversList = extractArray(response, 'servers');
-        console.log('Servers loaded:', serversList.length);
-        setServers(serversList);
+        const stats = response?.data || response;
+        console.log('Dashboard stats loaded:', stats);
+        setDashboardStats(stats);
         setConnectionStatus('connected');
       })
-      .catch((err) => console.error('Failed to load servers:', err.message))
-      .finally(() => setServersLoading(false));
+      .catch((err) => console.error('Failed to load dashboard stats:', err.message))
+      .finally(() => setStatsLoading(false));
 
     // Sites (fast)
     apiService.getSites()
@@ -76,17 +73,6 @@ const Dashboard = () => {
         setConnectionStatus('connected');
       })
       .catch((err) => console.error('Failed to load server info:', err.message));
-
-    // Cameras (slow)
-    apiService.getCameras()
-      .then((response) => {
-        const camerasList = extractArray(response, 'cameras');
-        console.log('Cameras loaded:', camerasList.length);
-        setCameras(camerasList);
-        setConnectionStatus('connected');
-      })
-      .catch((err) => console.error('Failed to load cameras:', err.message))
-      .finally(() => setCamerasLoading(false));
   };
 
   const getStatusColor = (status) => {
@@ -100,15 +86,6 @@ const Dashboard = () => {
       default:
         return 'bg-gray-500';
     }
-  };
-
-  // Helper to get computed values for a server
-  const getServerData = (server) => {
-    const serverCameras = cameras.filter(cam => cam.serverId === server.id);
-    const viewCount = serverCameras.length;
-    const cameraChannels = new Set(serverCameras.map(cam => cam.deviceName || cam.name)).size;
-    const isStandby = STANDBY_SERVERS.includes(server.name);
-    return { ...server, viewCount, cameraChannels, isStandby };
   };
 
   // Handle column sort
@@ -131,10 +108,10 @@ const Dashboard = () => {
       : <ChevronDown className="inline ml-1 h-4 w-4" />;
   };
 
-  // Sorted servers
+  // Sorted servers (from pre-computed stats)
   const sortedServers = useMemo(() => {
-    const serversWithData = servers.map(getServerData);
-    return serversWithData.sort((a, b) => {
+    const serverStats = dashboardStats?.serverStats || [];
+    return [...serverStats].sort((a, b) => {
       let aVal, bVal;
       switch (sortColumn) {
         case 'name':
@@ -165,7 +142,7 @@ const Dashboard = () => {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [servers, cameras, sortColumn, sortDirection]);
+  }, [dashboardStats, sortColumn, sortDirection]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
@@ -216,13 +193,13 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Total Servers</p>
-                {serversLoading ? (
+                {statsLoading ? (
                   <div className="flex items-center space-x-2">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
                     <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{servers.length}</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{dashboardStats?.totalServers || 0}</p>
                 )}
               </div>
               <Server className="h-12 w-12 text-purple-500" />
@@ -250,17 +227,14 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Total Views</p>
-                {camerasLoading || serversLoading ? (
+                {statsLoading ? (
                   <div className="flex items-center space-x-2">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
                     <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {cameras.filter(cam => {
-                      const server = servers.find(s => s.id === cam.serverId);
-                      return !server || !STANDBY_SERVERS.includes(server.name);
-                    }).length}
+                    {dashboardStats?.totalViews || 0}
                   </p>
                 )}
               </div>
@@ -272,19 +246,14 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Total Cameras</p>
-                {camerasLoading || serversLoading ? (
+                {statsLoading ? (
                   <div className="flex items-center space-x-2">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600"></div>
                     <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {servers
-                      .filter(server => !STANDBY_SERVERS.includes(server.name))
-                      .reduce((total, server) => {
-                        const serverCameras = cameras.filter(cam => cam.serverId === server.id);
-                        return total + new Set(serverCameras.map(cam => cam.deviceName || cam.name)).size;
-                      }, 0)}
+                    {dashboardStats?.totalCameraChannels || 0}
                   </p>
                 )}
               </div>
@@ -380,12 +349,12 @@ const Dashboard = () => {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            {serversLoading ? (
+            {statsLoading ? (
               <div className="px-6 py-8 flex items-center justify-center">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
                 <span className="text-gray-500 dark:text-gray-400">Loading servers...</span>
               </div>
-            ) : servers.length > 0 ? (
+            ) : sortedServers.length > 0 ? (
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
@@ -432,18 +401,10 @@ const Dashboard = () => {
                         {server.host || server.address || server.ip || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {camerasLoading ? (
-                          <span className="text-gray-400 dark:text-gray-500">Loading...</span>
-                        ) : (
-                          server.cameraChannels
-                        )}
+                        {server.cameraChannels}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {camerasLoading ? (
-                          <span className="text-gray-400 dark:text-gray-500">Loading...</span>
-                        ) : (
-                          server.viewCount
-                        )}
+                        {server.viewCount}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         30 days

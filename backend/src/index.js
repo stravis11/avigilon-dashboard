@@ -94,14 +94,15 @@ const prewarmCache = async () => {
     await avigilonService.login();
 
     // Then fetch all data in parallel to populate cache
+    // Note: getServers() returns 404, so we use getServerIds() instead
     const [serversResult, sitesResult, camerasResult] = await Promise.allSettled([
-      avigilonService.getServers(),
+      avigilonService.getServerIds(),
       avigilonService.getSites(),
       avigilonService.getCameras()
     ]);
 
     const results = {
-      servers: serversResult.status === 'fulfilled' ? 'OK' : 'FAILED',
+      serverIds: serversResult.status === 'fulfilled' ? 'OK' : 'FAILED',
       sites: sitesResult.status === 'fulfilled' ? 'OK' : 'FAILED',
       cameras: camerasResult.status === 'fulfilled' ? 'OK' : 'FAILED'
     };

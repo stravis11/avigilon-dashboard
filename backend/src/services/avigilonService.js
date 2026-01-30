@@ -5,6 +5,19 @@ import dns from 'dns';
 import { promisify } from 'util';
 
 const dnsLookup = promisify(dns.lookup);
+const DNS_SUFFIX = '.police.gatech.edu';
+
+// Helper to resolve server hostname to IP
+async function resolveServerIP(serverName) {
+  try {
+    const fqdn = serverName + DNS_SUFFIX;
+    const result = await dnsLookup(fqdn);
+    return result.address;
+  } catch (error) {
+    // Silently fail - some servers may not have DNS entries
+    return null;
+  }
+}
 
 class AvigilonService {
   constructor() {
@@ -698,6 +711,73 @@ class AvigilonService {
     } catch (error) {
       console.error('Test connection error:', error.message);
       return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Get dashboard statistics (pre-computed counts)
+   * Returns aggregated stats instead of full camera data for faster dashboard loading
+   */
+  async getDashboardStats() {
+    const cacheKey = 'dashboard_stats';
+    const cached = this.getCached(cacheKey);
+    if (cached) return cached;
+
+    try {
+      // Fetch cameras and server IDs in parallel
+      // Note: getServers() returns 404, so we use getServerIds() instead
+      const [camerasData, serversData] = await Promise.all([
+        this.getCameras(),
+        this.getServerIds()
+      ]);
+
+      const cameras = camerasData?.result?.cameras || [];
+      const servers = serversData?.result?.servers || [];
+
+      const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
+
+      // Get standby server IDs
+      const standbyServerIds = servers
+        .filter(server => STANDBY_SERVERS.includes(server.name))
+        .map(server => server.id);
+
+      // Filter active cameras (excluding standby servers)
+      const activeCameras = cameras.filter(
+        camera => !standbyServerIds.includes(camera.serverId)
+      );
+
+      // Calculate per-server stats with resolved IPs
+      const serverStats = await Promise.all(servers.map(async server => {
+        const serverCameras = cameras.filter(cam => cam.serverId === server.id);
+        const isStandby = STANDBY_SERVERS.includes(server.name);
+        const ip = await resolveServerIP(server.name);
+        return {
+          id: server.id,
+          name: server.name,
+          host: ip,
+          isStandby,
+          viewCount: serverCameras.length,
+          cameraChannels: new Set(serverCameras.map(cam => cam.deviceName || cam.name)).size
+        };
+      }));
+
+      // Calculate totals
+      const activeServerStats = serverStats.filter(s => !s.isStandby);
+      const totalViews = activeServerStats.reduce((sum, s) => sum + s.viewCount, 0);
+      const totalCameraChannels = activeServerStats.reduce((sum, s) => sum + s.cameraChannels, 0);
+
+      const stats = {
+        totalServers: servers.length,
+        totalViews,
+        totalCameraChannels,
+        serverStats
+      };
+
+      this.setCache(cacheKey, stats);
+      return stats;
+    } catch (error) {
+      console.error('Failed to get dashboard stats:', error.message);
+      throw error;
     }
   }
 }
