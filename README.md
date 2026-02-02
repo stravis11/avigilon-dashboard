@@ -1,4 +1,4 @@
-# Avigilon Control Center Web Application
+# Avigilon Dashboard
 
 A full-stack web application for managing and monitoring Avigilon Control Center (ACC) cameras and sites. Built with React frontend and Node.js backend.
 
