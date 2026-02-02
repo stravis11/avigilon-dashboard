@@ -2,13 +2,30 @@
 
 A full-stack web application for managing and monitoring Avigilon Control Center (ACC) cameras and sites. Built with React frontend and Node.js backend.
 
+## 📸 Screenshots
+
+### Login Page
+![Login Page](docs/screenshots/login.png)
+
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Cameras View
+![Cameras](docs/screenshots/cameras.png)
+
+### User Management (Admin)
+![User Management](docs/screenshots/users.png)
+
 ## 🌟 Features
 
+- **User Authentication**: Secure JWT-based login with role-based access control
+- **Admin User Management**: Create, edit, and delete user accounts (admin only)
 - **Dashboard Overview**: View system statistics, server information, and site summary
 - **Camera Management**: Browse all cameras, view snapshots, and manage camera settings
 - **Site Information**: Access detailed information about ACC sites
 - **Real-time Status**: Monitor connection status and camera availability
 - **RESTful API**: Clean API interface to ACC Web Endpoint Service
+- **Dark Mode**: Toggle between light and dark themes
 
 ## 📋 Prerequisites
 
@@ -102,6 +119,14 @@ Open your browser and navigate to:
 - Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:3001`
 
+### 5. Login
+
+Use the default admin credentials:
+- **Username:** `admin`
+- **Password:** `Avigilon`
+
+> **Note:** Change the default password after first login for security.
+
 ## 📁 Project Structure
 
 ```
@@ -109,39 +134,81 @@ avigilon-app/
 ├── backend/
 │   ├── src/
 │   │   ├── controllers/
-│   │   │   └── avigilonController.js    # Request handlers
+│   │   │   ├── avigilonController.js    # ACC request handlers
+│   │   │   ├── authController.js        # Login/logout handlers
+│   │   │   └── userController.js        # User CRUD handlers
+│   │   ├── middleware/
+│   │   │   └── authMiddleware.js        # JWT verification
 │   │   ├── routes/
-│   │   │   └── api.js                   # API routes
+│   │   │   ├── api.js                   # ACC API routes
+│   │   │   └── auth.js                  # Auth routes
 │   │   ├── services/
-│   │   │   └── avigilonService.js       # ACC API integration
+│   │   │   ├── avigilonService.js       # ACC API integration
+│   │   │   └── authService.js           # JWT & user management
+│   │   ├── data/
+│   │   │   └── users.json               # User data storage
 │   │   └── index.js                     # Express server
 │   ├── .env.example                     # Environment template
 │   └── package.json
 │
-└── frontend/
-    ├── src/
-    │   ├── components/                  # Reusable components
-    │   ├── pages/
-    │   │   ├── Dashboard.jsx           # Dashboard page
-    │   │   └── Cameras.jsx             # Cameras page
-    │   ├── services/
-    │   │   └── apiService.js           # API client
-    │   ├── App.jsx                     # Main app component
-    │   ├── main.jsx                    # Entry point
-    │   └── index.css                   # Global styles
-    ├── index.html
-    ├── vite.config.js
-    ├── tailwind.config.js
-    └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ThemeToggle.jsx          # Dark mode toggle
+│   │   │   └── ProtectedRoute.jsx       # Auth route guard
+│   │   ├── context/
+│   │   │   ├── ThemeContext.jsx         # Theme state
+│   │   │   └── AuthContext.jsx          # Auth state
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx            # Dashboard page
+│   │   │   ├── Cameras.jsx              # Cameras page
+│   │   │   ├── Login.jsx                # Login page
+│   │   │   └── UserManagement.jsx       # User admin page
+│   │   ├── services/
+│   │   │   ├── apiService.js            # ACC API client
+│   │   │   └── authService.js           # Auth API client
+│   │   ├── App.jsx                      # Main app component
+│   │   ├── main.jsx                     # Entry point
+│   │   └── index.css                    # Global styles
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── package.json
+│
+└── docs/
+    └── screenshots/                      # Application screenshots
 ```
 
 ## 🔌 API Endpoints
 
-### Backend API Routes
+### Authentication Routes (Public)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/health` | Health check |
+| POST | `/api/auth/login` | Login with username/password |
+| POST | `/api/auth/refresh` | Refresh access token |
+
+### Authentication Routes (Protected)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/logout` | Logout user |
+| GET | `/api/auth/me` | Get current user info |
+
+### User Management Routes (Admin Only)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/auth/users` | List all users |
+| POST | `/api/auth/users` | Create new user |
+| PUT | `/api/auth/users/:id` | Update user |
+| DELETE | `/api/auth/users/:id` | Delete user |
+
+### ACC API Routes (Protected)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check (public) |
 | GET | `/api/test-connection` | Test ACC connection |
 | GET | `/api/server/info` | Get ACC server information |
 | GET | `/api/sites` | Get all sites |
@@ -204,9 +271,11 @@ server: {
 
 1. **Never commit `.env` files** - Keep your credentials secure
 2. **Use HTTPS in production** - Enable SSL/TLS for both frontend and backend
-3. **Implement proper authentication** - Add user authentication for production use
-4. **Rate limiting** - Already implemented for API endpoints
-5. **CORS configuration** - Update allowed origins for production
+3. **User Authentication** - JWT-based authentication with 15-minute access tokens
+4. **Password Security** - Passwords hashed with bcrypt (10 salt rounds)
+5. **Rate limiting** - Already implemented for API endpoints
+6. **CORS configuration** - Update allowed origins for production
+7. **Default Admin** - Change the default admin password after first login
 
 ## 🚧 Development
 
@@ -304,7 +373,7 @@ npm run preview  # Preview production build
 - [ ] Event notifications
 - [ ] Alarm management
 - [ ] Recording playback
-- [ ] User authentication and authorization
+- [x] User authentication and authorization
 - [ ] Multi-site support
 - [ ] Mobile responsive improvements
 - [ ] Real-time camera status updates via WebSocket
