@@ -1,18 +1,33 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Camera } from 'lucide-react';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { LayoutDashboard, Camera, Users, LogOut } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Cameras from './pages/Cameras';
+import Login from './pages/Login';
+import UserManagement from './pages/UserManagement';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import ThemeToggle from './components/ThemeToggle';
 
 const Navigation = () => {
   const location = useLocation();
+  const { isAuthenticated, isAdmin, user, logout } = useAuth();
+
+  // Don't show navigation on login page or when not authenticated
+  if (!isAuthenticated || location.pathname === '/login') {
+    return null;
+  }
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/cameras', label: 'Cameras', icon: Camera },
   ];
+
+  // Add Users link for admin users
+  if (isAdmin) {
+    navItems.push({ path: '/users', label: 'Users', icon: Users });
+  }
 
   return (
     <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
@@ -38,8 +53,21 @@ const Navigation = () => {
               );
             })}
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-gray-600 dark:text-gray-300">
+              {user?.name}
+              {isAdmin && (
+                <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(Admin)</span>
+              )}
+            </span>
             <ThemeToggle />
+            <button
+              onClick={logout}
+              className="flex items-center space-x-1 p-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              title="Logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -47,18 +75,50 @@ const Navigation = () => {
   );
 };
 
+function AppContent() {
+  return (
+    <Router>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+        <Navigation />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cameras"
+            element={
+              <ProtectedRoute>
+                <Cameras />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute requireAdmin>
+                <UserManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
+    </Router>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
-      <Router>
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-          <Navigation />
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/cameras" element={<Cameras />} />
-          </Routes>
-        </div>
-      </Router>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

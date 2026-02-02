@@ -80,8 +80,30 @@ app.get('/', (req, res) => {
 
 // Dynamically import routes AFTER environment variables are loaded
 // This ensures the service instance is created with proper env vars
+
+// Import and initialize auth service
+const { default: authService } = await import('./services/authService.js');
+await authService.initialize();
+
+// Import auth routes and middleware
+const { default: authRoutes } = await import('./routes/auth.js');
+const { authenticateToken } = await import('./middleware/authMiddleware.js');
+
+// Mount auth routes (public endpoints for login/refresh)
+app.use('/api/auth', authRoutes);
+
+// Import API routes
 const { default: apiRoutes } = await import('./routes/api.js');
-app.use('/api', apiRoutes);
+
+// Health endpoint remains public (no auth required)
+app.get('/api/health', (req, res, next) => {
+  // Pass through to apiRoutes handler
+  req.url = '/health';
+  apiRoutes(req, res, next);
+});
+
+// All other API routes require authentication
+app.use('/api', authenticateToken, apiRoutes);
 
 // Import service for cache pre-warming
 const { default: avigilonService } = await import('./services/avigilonServiceInstance.js');

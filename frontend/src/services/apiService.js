@@ -10,9 +10,13 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor
+// Request interceptor - add auth token
 apiClient.interceptors.request.use(
   (config) => {
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {
@@ -20,10 +24,39 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor - handle 401 errors with token refresh
 apiClient.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If 401 and we haven't tried refreshing yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        try {
+          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+          if (response.data.success) {
+            const newToken = response.data.data.accessToken;
+            localStorage.setItem('accessToken', newToken);
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return apiClient.request(originalRequest);
+          }
+        } catch (refreshError) {
+          // Refresh failed, clear auth and redirect to login
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          window.location.href = '/login';
+          return Promise.reject(refreshError);
+        }
+      } else {
+        // No refresh token, redirect to login
+        window.location.href = '/login';
+      }
+    }
+
     const message = error.response?.data?.error || error.message || 'An error occurred';
     return Promise.reject(new Error(message));
   }
@@ -52,8 +85,17 @@ const apiService = {
   getCameraById: (cameraId) => apiClient.get(`/cameras/${cameraId}`),
   getCameraStatus: (cameraId) => apiClient.get(`/cameras/${cameraId}/status`),
   updateCamera: (cameraId, settings) => apiClient.put(`/cameras/${cameraId}`, settings),
-  getCameraSnapshot: (cameraId) =>
+  // Returns the snapshot URL - for authenticated requests, use fetchCameraSnapshotBlob
+  getCameraSnapshotUrl: (cameraId) =>
     `${API_BASE_URL}/cameras/${cameraId}/snapshot`,
+
+  // Fetch camera snapshot as blob URL (for authenticated image loading)
+  fetchCameraSnapshotBlob: async (cameraId) => {
+    const response = await apiClient.get(`/cameras/${cameraId}/snapshot`, {
+      responseType: 'blob',
+    });
+    return URL.createObjectURL(response);
+  },
 
   // Dashboard
   getDashboardStats: () => apiClient.get('/dashboard/stats'),

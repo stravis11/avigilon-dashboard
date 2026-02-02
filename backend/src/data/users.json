@@ -1,0 +1,24 @@
+{
+  "users": [
+    {
+      "id": "1",
+      "username": "admin",
+      "name": "Administrator",
+      "email": "admin@avigilon.local",
+      "password": "$2b$10$okfCIocR8YtBlDjEWqnbJ.k5Onah5.ovm6p06JmXhE.6gqif/0ACC",
+      "role": "admin",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "username": "testuser",
+      "name": "Test User",
+      "email": "test@example.com",
+      "password": "$2b$10$jRV/Pndi2vEtMbEHxn9FkeZWEqSLtfi./gfqBsNB2svhJoK0gzXBK",
+      "role": "user",
+      "createdAt": "2026-02-02T14:28:10.170Z",
+      "updatedAt": "2026-02-02T14:28:10.170Z"
+    }
+  ]
+}

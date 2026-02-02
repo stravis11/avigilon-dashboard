@@ -10,6 +10,7 @@ const DEFAULT_PAGE_SIZE = 50;
 const CameraThumbnail = ({ cameraId, cameraName, index = 0 }) => {
   const [status, setStatus] = useState('idle'); // idle, waiting, loading, loaded, error
   const [shouldLoad, setShouldLoad] = useState(false);
+  const [imageSrc, setImageSrc] = useState(null);
   const containerRef = useRef(null);
 
   // Use Intersection Observer to detect when thumbnail is visible
@@ -33,6 +34,34 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0 }) => {
     return () => observer.disconnect();
   }, [index]);
 
+  // Fetch image with authentication when shouldLoad is true
+  useEffect(() => {
+    if (!shouldLoad) return;
+
+    let cancelled = false;
+    setStatus('loading');
+
+    apiService.fetchCameraSnapshotBlob(cameraId)
+      .then((blobUrl) => {
+        if (!cancelled) {
+          setImageSrc(blobUrl);
+          setStatus('loaded');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus('error');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (imageSrc) {
+        URL.revokeObjectURL(imageSrc);
+      }
+    };
+  }, [shouldLoad, cameraId]);
+
   return (
     <div ref={containerRef} className="w-20 h-14 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden relative">
       {(status === 'idle' || status === 'loading') && (
@@ -45,17 +74,71 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0 }) => {
           <ImageOff className="h-5 w-5 text-gray-400 dark:text-gray-500" />
         </div>
       )}
-      {shouldLoad && (
+      {status === 'loaded' && imageSrc && (
         <img
-          src={apiService.getCameraSnapshot(cameraId)}
+          src={imageSrc}
           alt={cameraName || 'Camera'}
-          className={`w-full h-full object-cover ${status === 'loaded' ? '' : 'opacity-0 absolute'}`}
-          onLoad={() => setStatus('loaded')}
-          onError={() => setStatus('error')}
-          loading="lazy"
+          className="w-full h-full object-cover"
         />
       )}
     </div>
+  );
+};
+
+// Modal snapshot component with authenticated fetch
+const ModalSnapshot = ({ cameraId, cameraName }) => {
+  const [status, setStatus] = useState('loading');
+  const [imageSrc, setImageSrc] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('loading');
+    setImageSrc(null);
+
+    apiService.fetchCameraSnapshotBlob(cameraId)
+      .then((blobUrl) => {
+        if (!cancelled) {
+          setImageSrc(blobUrl);
+          setStatus('loaded');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus('error');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (imageSrc) {
+        URL.revokeObjectURL(imageSrc);
+      }
+    };
+  }, [cameraId]);
+
+  if (status === 'loading') {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 dark:border-blue-400"></div>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+        <ImageOff className="h-12 w-12 mb-2" />
+        <span>Snapshot unavailable</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      alt={cameraName || 'Camera snapshot'}
+      className="w-full h-full object-contain"
+    />
   );
 };
 
@@ -602,19 +685,7 @@ const Cameras = () => {
               {/* Camera Snapshot */}
               <div className="mb-6">
                 <div className="bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden aspect-video flex items-center justify-center">
-                  <img
-                    src={apiService.getCameraSnapshot(selectedCamera.id)}
-                    alt={selectedCamera.name || 'Camera snapshot'}
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                      if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
-                    }}
-                  />
-                  <div className="hidden flex-col items-center justify-center text-gray-400 dark:text-gray-500">
-                    <ImageOff className="h-12 w-12 mb-2" />
-                    <span>Snapshot unavailable</span>
-                  </div>
+                  <ModalSnapshot cameraId={selectedCamera.id} cameraName={selectedCamera.name} />
                 </div>
               </div>
 
