@@ -127,6 +127,65 @@ Use the default admin credentials:
 
 > **Note:** Change the default password after first login for security.
 
+## 🐳 Docker Deployment
+
+### Prerequisites
+- Docker and Docker Compose installed
+
+### Quick Start with Docker
+
+1. **Configure environment:**
+   ```bash
+   cp backend/.env.example backend/.env
+   # Edit backend/.env with your ACC credentials
+   ```
+
+2. **Build and start containers:**
+   ```bash
+   docker-compose build
+   docker-compose up -d
+   ```
+
+3. **Access the application:**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:3001
+
+### Docker Commands
+
+```bash
+# Build images
+docker-compose build
+
+# Start containers (detached)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop containers
+docker-compose down
+
+# Rebuild and restart
+docker-compose up -d --build
+```
+
+### Docker Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Docker Network                     │
+│  ┌──────────────┐          ┌──────────────────────┐ │
+│  │   Frontend   │          │      Backend         │ │
+│  │   (nginx)    │  ──────> │   (Node.js/Express)  │ │
+│  │   Port 80    │          │      Port 3001       │ │
+│  └──────────────┘          └──────────────────────┘ │
+└─────────────────────────────────────────────────────┘
+```
+
+- **Frontend**: nginx serving React build, proxies `/api/` to backend
+- **Backend**: Node.js Express API with health checks
+- **Data persistence**: User data stored in mounted volume
+
 ## 📁 Project Structure
 
 ```
@@ -148,6 +207,8 @@ avigilon-app/
 │   │   ├── data/
 │   │   │   └── users.json               # User data storage
 │   │   └── index.js                     # Express server
+│   ├── Dockerfile                       # Backend Docker image
+│   ├── .dockerignore
 │   ├── .env.example                     # Environment template
 │   └── package.json
 │
@@ -170,10 +231,15 @@ avigilon-app/
 │   │   ├── App.jsx                      # Main app component
 │   │   ├── main.jsx                     # Entry point
 │   │   └── index.css                    # Global styles
+│   ├── Dockerfile                       # Frontend Docker image
+│   ├── nginx.conf                       # nginx configuration
+│   ├── .dockerignore
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── tailwind.config.js
 │   └── package.json
+│
+├── docker-compose.yml                   # Docker orchestration
 │
 └── docs/
     └── screenshots/                      # Application screenshots
@@ -374,6 +440,7 @@ npm run preview  # Preview production build
 - [ ] Alarm management
 - [ ] Recording playback
 - [x] User authentication and authorization
+- [x] Docker containerization
 - [ ] Multi-site support
 - [ ] Mobile responsive improvements
 - [ ] Real-time camera status updates via WebSocket
