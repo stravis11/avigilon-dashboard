@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw } from 'lucide-react';
 import apiService from '../services/apiService';
 
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
@@ -14,20 +14,23 @@ const Dashboard = () => {
   const [connectionStatus, setConnectionStatus] = useState('checking');
   const [sortColumn, setSortColumn] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [selectedServer, setSelectedServer] = useState(null);
+  const [loadingMessage, setLoadingMessage] = useState('');
 
+  // Load data on mount - simple approach, let apiClient handle auth
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     setSitesLoading(true);
     setStatsLoading(true);
     setError(null);
     setConnectionStatus('checking');
+    setLoadingMessage('Connecting to server...');
 
     // Helper to extract array from various response structures
     const extractArray = (response, key) => {
-      // Try different paths where the array might be
       const paths = [
         response?.data?.result?.[key],
         response?.result?.[key],
@@ -43,6 +46,8 @@ const Dashboard = () => {
     };
 
     // Load all data in parallel, update UI as each completes
+    setLoadingMessage('Loading dashboard statistics...');
+
     // Dashboard stats (includes servers with pre-computed camera counts)
     apiService.getDashboardStats()
       .then((response) => {
@@ -50,11 +55,15 @@ const Dashboard = () => {
         console.log('Dashboard stats loaded:', stats);
         setDashboardStats(stats);
         setConnectionStatus('connected');
+        setLoadingMessage(`Loaded ${stats?.totalServers || 0} servers, ${stats?.totalCameraChannels || 0} cameras`);
       })
-      .catch((err) => console.error('Failed to load dashboard stats:', err.message))
+      .catch((err) => {
+        console.error('Failed to load dashboard stats:', err.message);
+        setError(`Failed to load stats: ${err.message}`);
+      })
       .finally(() => setStatsLoading(false));
 
-    // Sites (fast)
+    // Sites
     apiService.getSites()
       .then((response) => {
         const sitesList = extractArray(response, 'sites');
@@ -62,10 +71,12 @@ const Dashboard = () => {
         setSites(sitesList);
         setConnectionStatus('connected');
       })
-      .catch((err) => console.error('Failed to load sites:', err.message))
+      .catch((err) => {
+        console.error('Failed to load sites:', err.message);
+      })
       .finally(() => setSitesLoading(false));
 
-    // Server info (fast)
+    // Server info
     apiService.getServerInfo()
       .then((response) => {
         const info = response?.data?.result || response?.result || response?.data || response;
@@ -73,7 +84,7 @@ const Dashboard = () => {
         setConnectionStatus('connected');
       })
       .catch((err) => console.error('Failed to load server info:', err.message));
-  };
+  }, []);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -144,6 +155,114 @@ const Dashboard = () => {
     });
   }, [dashboardStats, sortColumn, sortDirection]);
 
+  // Server Detail Modal Component
+  const ServerDetailModal = ({ server, onClose }) => {
+    if (!server) return null;
+
+    return (
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Modal Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center space-x-3">
+              <Server className="h-6 w-6 text-purple-500" />
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                {server.name || 'Server Details'}
+              </h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+
+          {/* Modal Body */}
+          <div className="px-6 py-4 overflow-y-auto max-h-[calc(90vh-120px)]">
+            <div className="space-y-4">
+              {/* Status Badge */}
+              <div className="flex items-center space-x-2">
+                <span className={`px-3 py-1 text-sm font-semibold rounded-full ${
+                  server.isStandby
+                    ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-400'
+                    : 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-400'
+                }`}>
+                  {server.isStandby ? 'Standby' : 'Active'}
+                </span>
+              </div>
+
+              {/* Server Details Grid */}
+              <div className="grid grid-cols-1 gap-4">
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">
+                    Connection Details
+                  </h3>
+                  <dl className="space-y-2">
+                    <div className="flex justify-between">
+                      <dt className="text-sm text-gray-600 dark:text-gray-400">IP Address</dt>
+                      <dd className="text-sm font-medium text-gray-900 dark:text-white">
+                        {server.host || 'N/A'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-sm text-gray-600 dark:text-gray-400">Server ID</dt>
+                      <dd className="text-sm font-mono text-gray-900 dark:text-white truncate max-w-[200px]" title={server.id}>
+                        {server.id || 'N/A'}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">
+                    Statistics
+                  </h3>
+                  <dl className="space-y-2">
+                    <div className="flex justify-between">
+                      <dt className="text-sm text-gray-600 dark:text-gray-400">Camera Channels</dt>
+                      <dd className="text-sm font-medium text-gray-900 dark:text-white">
+                        {server.cameraChannels ?? 'N/A'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-sm text-gray-600 dark:text-gray-400">View Count</dt>
+                      <dd className="text-sm font-medium text-gray-900 dark:text-white">
+                        {server.viewCount ?? 'N/A'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-sm text-gray-600 dark:text-gray-400">Max Recording</dt>
+                      <dd className="text-sm font-medium text-gray-900 dark:text-white">
+                        30 days
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Modal Footer */}
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
       {/* Header */}
@@ -161,9 +280,22 @@ const Dashboard = () => {
                 Georgia Tech Avigilon
               </h1>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className={`h-3 w-3 rounded-full ${getStatusColor(connectionStatus)}`}></div>
-              <span className="text-sm text-gray-600 dark:text-gray-300 capitalize">{connectionStatus}</span>
+            <div className="flex items-center space-x-4">
+              {loadingMessage && (statsLoading || sitesLoading) && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">{loadingMessage}</span>
+              )}
+              <button
+                onClick={loadDashboardData}
+                disabled={statsLoading && sitesLoading}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                title="Refresh data"
+              >
+                <RefreshCw className={`h-5 w-5 text-gray-600 dark:text-gray-400 ${(statsLoading || sitesLoading) ? 'animate-spin' : ''}`} />
+              </button>
+              <div className="flex items-center space-x-2">
+                <div className={`h-3 w-3 rounded-full ${getStatusColor(connectionStatus)}`}></div>
+                <span className="text-sm text-gray-600 dark:text-gray-300 capitalize">{connectionStatus}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -392,7 +524,11 @@ const Dashboard = () => {
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {sortedServers.map((server) => (
-                    <tr key={server.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <tr
+                      key={server.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedServer(server)}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                         {server.name || 'N/A'}
                         {server.isStandby && <span className="ml-2 text-gray-500 dark:text-gray-400 font-normal">(Standby)</span>}
@@ -419,6 +555,14 @@ const Dashboard = () => {
           </div>
         </div>
       </main>
+
+      {/* Server Detail Modal */}
+      {selectedServer && (
+        <ServerDetailModal
+          server={selectedServer}
+          onClose={() => setSelectedServer(null)}
+        />
+      )}
     </div>
   );
 };
