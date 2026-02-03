@@ -102,6 +102,20 @@ app.get('/api/health', (req, res, next) => {
   apiRoutes(req, res, next);
 });
 
+// Cloud token submission - public endpoint protected by shared secret (for bookmarklet)
+// Needs separate CORS to allow requests from the Avigilon cloud portal
+const { submitCloudToken } = await import('./controllers/cloudController.js');
+app.post('/api/cloud/token-submit',
+  cors({ origin: ['https://us.cloud.avigilon.com', ...(process.env.ALLOWED_ORIGINS?.split(',') || [])], credentials: true }),
+  (req, res) => {
+    const { secret } = req.body;
+    if (!secret || secret !== process.env.CLOUD_TOKEN_SECRET) {
+      return res.status(403).json({ success: false, error: 'Invalid secret' });
+    }
+    submitCloudToken(req, res);
+  }
+);
+
 // All other API routes require authentication
 app.use('/api', authenticateToken, apiRoutes);
 
@@ -130,6 +144,22 @@ const prewarmCache = async () => {
     };
 
     console.log('Cache pre-warm complete:', results);
+
+    // Test health-related endpoints
+    console.log('\n=== Testing Health-Related Endpoints ===');
+    try {
+      const entities = await avigilonService.getEntities();
+      console.log('Entities endpoint works!');
+    } catch (err) {
+      console.log('Entities endpoint error:', err.message);
+    }
+
+    try {
+      const subtopics = await avigilonService.getEventSubtopics();
+      console.log('Event-subtopics endpoint works!');
+    } catch (err) {
+      console.log('Event-subtopics endpoint error:', err.message);
+    }
   } catch (error) {
     console.error('Cache pre-warm failed:', error.message);
   }

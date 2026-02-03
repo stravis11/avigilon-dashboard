@@ -1,10 +1,11 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Camera, Users, LogOut } from 'lucide-react';
+import { LayoutDashboard, Camera, Users, Cloud, LogOut } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Cameras from './pages/Cameras';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
+import CloudSettings from './pages/CloudSettings';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -22,6 +23,7 @@ const Navigation = () => {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/cameras', label: 'Cameras', icon: Camera },
+    { path: '/cloud', label: 'Cloud', icon: Cloud },
   ];
 
   // Add Users link for admin users
@@ -95,6 +97,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <Cameras />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cloud"
+            element={
+              <ProtectedRoute>
+                <CloudSettings />
               </ProtectedRoute>
             }
           />

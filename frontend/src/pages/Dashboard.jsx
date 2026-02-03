@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw } from 'lucide-react';
+import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw, Cloud, Thermometer, HardDrive, Cpu, Zap } from 'lucide-react';
 import apiService from '../services/apiService';
 
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
@@ -16,6 +16,8 @@ const Dashboard = () => {
   const [sortDirection, setSortDirection] = useState('asc');
   const [selectedServer, setSelectedServer] = useState(null);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [cloudStatus, setCloudStatus] = useState(null);
+  const [cloudHealthData, setCloudHealthData] = useState(null);
 
   // Load data on mount - simple approach, let apiClient handle auth
   useEffect(() => {
@@ -84,6 +86,31 @@ const Dashboard = () => {
         setConnectionStatus('connected');
       })
       .catch((err) => console.error('Failed to load server info:', err.message));
+
+    // Cloud health data (non-blocking — fails silently if no token)
+    // Fetch health summary if: token is valid OR cached data exists on backend
+    apiService.getCloudStatus()
+      .then((response) => {
+        const status = response?.data || response;
+        setCloudStatus(status);
+        if ((status.hasToken && !status.isExpired) || status.hasCachedData) {
+          return apiService.getCloudHealthSummary();
+        }
+        return null;
+      })
+      .then((response) => {
+        if (response) {
+          const healthList = response?.data || response;
+          const healthMap = {};
+          (Array.isArray(healthList) ? healthList : []).forEach(server => {
+            if (server.serverName) {
+              healthMap[server.serverName.toLowerCase()] = server;
+            }
+          });
+          setCloudHealthData(healthMap);
+        }
+      })
+      .catch((err) => console.warn('Cloud API not available:', err.message));
   }, []);
 
   const getStatusColor = (status) => {
@@ -141,10 +168,6 @@ const Dashboard = () => {
           aVal = a.viewCount;
           bVal = b.viewCount;
           break;
-        case 'maxRecording':
-          aVal = 30; // Currently hardcoded
-          bVal = 30;
-          break;
         default:
           aVal = a.name || '';
           bVal = b.name || '';
@@ -155,8 +178,41 @@ const Dashboard = () => {
     });
   }, [dashboardStats, sortColumn, sortDirection]);
 
+  // Look up cloud health data for a server by name
+  const getCloudHealthForServer = useCallback((serverName) => {
+    if (!cloudHealthData || !serverName) return null;
+    const key = serverName.toLowerCase();
+    if (cloudHealthData[key]) return cloudHealthData[key];
+    // Try partial match (cloud might include domain suffix)
+    const match = Object.keys(cloudHealthData).find(k => k.includes(key) || key.includes(k));
+    return match ? cloudHealthData[match] : null;
+  }, [cloudHealthData]);
+
+  // Helper to get status color for hardware components
+  const getHwStatusColor = (status) => {
+    if (status == null) return 'text-gray-500 dark:text-gray-400';
+    // health field: 0 = OK (numeric)
+    if (status === 0) return 'text-green-600 dark:text-green-400';
+    if (typeof status === 'number') return 'text-red-600 dark:text-red-400';
+    const s = String(status).toLowerCase();
+    if (s === 'ok' || s === 'good' || s === 'healthy' || s === 'online' || s === 'presence detected' || s === 'enabled') return 'text-green-600 dark:text-green-400';
+    if (s === 'warning' || s === 'warn' || s === 'degraded') return 'text-yellow-600 dark:text-yellow-400';
+    if (s === 'n/a' || s === 'unknown' || s === '') return 'text-gray-500 dark:text-gray-400';
+    return 'text-red-600 dark:text-red-400';
+  };
+
+  // Get display text for hardware health status
+  const getHwStatusText = (item) => {
+    if (item.status) return item.status;
+    if (item.sensorState) return item.sensorState;
+    if (item.state) return item.state;
+    if (item.health === 0) return 'OK';
+    if (item.health != null) return `Health: ${item.health}`;
+    return 'Unknown';
+  };
+
   // Server Detail Modal Component
-  const ServerDetailModal = ({ server, onClose }) => {
+  const ServerDetailModal = ({ server, cloudHealth, onClose }) => {
     if (!server) return null;
 
     return (
@@ -165,7 +221,7 @@ const Dashboard = () => {
         onClick={onClose}
       >
         <div
-          className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden"
+          className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Modal Header */}
@@ -196,6 +252,15 @@ const Dashboard = () => {
                 }`}>
                   {server.isStandby ? 'Standby' : 'Active'}
                 </span>
+                {cloudHealth && (
+                  <span className={`px-3 py-1 text-sm font-semibold rounded-full ${
+                    cloudHealth.connectionState?.toUpperCase() === 'CONNECTED'
+                      ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-400'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-400'
+                  }`}>
+                    Cloud: {cloudHealth.connectionState || 'Unknown'}
+                  </span>
+                )}
               </div>
 
               {/* Server Details Grid */}
@@ -217,6 +282,18 @@ const Dashboard = () => {
                         {server.id || 'N/A'}
                       </dd>
                     </div>
+                    {cloudHealth?.model && (
+                      <div className="flex justify-between">
+                        <dt className="text-sm text-gray-600 dark:text-gray-400">Model</dt>
+                        <dd className="text-sm font-medium text-gray-900 dark:text-white">{cloudHealth.model}</dd>
+                      </div>
+                    )}
+                    {cloudHealth?.serviceTag && (
+                      <div className="flex justify-between">
+                        <dt className="text-sm text-gray-600 dark:text-gray-400">Service Tag</dt>
+                        <dd className="text-sm font-mono text-gray-900 dark:text-white">{cloudHealth.serviceTag}</dd>
+                      </div>
+                    )}
                   </dl>
                 </div>
 
@@ -237,14 +314,205 @@ const Dashboard = () => {
                         {server.viewCount ?? 'N/A'}
                       </dd>
                     </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-600 dark:text-gray-400">Max Recording</dt>
-                      <dd className="text-sm font-medium text-gray-900 dark:text-white">
-                        30 days
-                      </dd>
-                    </div>
+                    {(server.version || cloudHealth?.version) && (
+                      <div className="flex justify-between">
+                        <dt className="text-sm text-gray-600 dark:text-gray-400">Version</dt>
+                        <dd className="text-sm font-medium text-gray-900 dark:text-white">
+                          {server.version || cloudHealth.version}
+                        </dd>
+                      </div>
+                    )}
                   </dl>
                 </div>
+
+                {/* Cloud Hardware Health Sections */}
+                {cloudHealth ? (
+                  <>
+                    {/* Power Supplies */}
+                    {cloudHealth.hardware?.psus?.length > 0 && (
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center">
+                          <Zap className="h-4 w-4 mr-1.5" />
+                          Power Supplies
+                        </h3>
+                        <dl className="space-y-2">
+                          {cloudHealth.hardware.psus.map((psu, i) => (
+                            <div key={i} className="flex justify-between items-center">
+                              <dt className="text-sm text-gray-600 dark:text-gray-400">
+                                {psu.locationName || `PSU ${i + 1}`}
+                                {psu.type && <span className="text-gray-400 ml-1">({psu.type})</span>}
+                              </dt>
+                              <dd className={`text-sm font-medium ${getHwStatusColor(psu.status || psu.sensorState || psu.health)}`}>
+                                {getHwStatusText(psu)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+
+                    {/* Temperature Probes */}
+                    {cloudHealth.hardware?.temperatureProbes?.length > 0 && (
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center">
+                          <Thermometer className="h-4 w-4 mr-1.5" />
+                          Temperature Probes
+                        </h3>
+                        <dl className="space-y-2">
+                          {cloudHealth.hardware.temperatureProbes.map((probe, i) => (
+                            <div key={i} className="flex justify-between items-center">
+                              <dt className="text-sm text-gray-600 dark:text-gray-400">
+                                {probe.locationName || `Probe ${i + 1}`}
+                                {probe.type && <span className="text-gray-400 ml-1">({probe.type})</span>}
+                              </dt>
+                              <dd className={`text-sm font-medium ${getHwStatusColor(probe.status || probe.health)}`}>
+                                {getHwStatusText(probe)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+
+                    {/* Cooling Devices */}
+                    {cloudHealth.hardware?.coolingDevices?.length > 0 && (
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center">
+                          <Activity className="h-4 w-4 mr-1.5" />
+                          Cooling
+                        </h3>
+                        <dl className="space-y-2">
+                          {cloudHealth.hardware.coolingDevices.map((fan, i) => (
+                            <div key={i} className="flex justify-between items-center">
+                              <dt className="text-sm text-gray-600 dark:text-gray-400">
+                                {fan.locationName || `Fan ${i + 1}`}
+                                {fan.type && <span className="text-gray-400 ml-1">({fan.type})</span>}
+                              </dt>
+                              <dd className={`text-sm font-medium ${getHwStatusColor(fan.status || fan.sensorState || fan.health)}`}>
+                                {getHwStatusText(fan)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+
+                    {/* Disks */}
+                    {cloudHealth.hardware?.disks?.length > 0 && (
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center">
+                          <HardDrive className="h-4 w-4 mr-1.5" />
+                          Disks
+                        </h3>
+                        <dl className="space-y-2">
+                          {cloudHealth.hardware.disks.map((disk, i) => (
+                            <div key={i} className="flex justify-between items-center">
+                              <dt className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-[60%]" title={disk.name || `Disk ${i + 1}`}>
+                                {disk.name || `Disk ${i + 1}`}
+                                {disk.serialNo && <span className="text-gray-400 ml-1">({disk.serialNo})</span>}
+                              </dt>
+                              <dd className="text-sm font-medium flex items-center space-x-2">
+                                <span className={getHwStatusColor(disk.state || disk.rollUpStatus || disk.health)}>
+                                  {disk.state || disk.rollUpStatus || (disk.health === 0 ? 'OK' : 'Unknown')}
+                                </span>
+                                {disk.smartAlert && disk.smartAlert !== 'No' && (
+                                  <span className="text-yellow-600 dark:text-yellow-400">SMART Alert</span>
+                                )}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+
+                    {/* CPU & Memory */}
+                    {(cloudHealth.cpu || cloudHealth.memory) && (
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center">
+                          <Cpu className="h-4 w-4 mr-1.5" />
+                          CPU & Memory
+                        </h3>
+                        <dl className="space-y-3">
+                          {cloudHealth.cpu && (
+                            <>
+                              <div>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <dt className="text-gray-600 dark:text-gray-400">System CPU</dt>
+                                  <dd className="font-medium text-gray-900 dark:text-white">
+                                    {cloudHealth.cpu.systemPercent != null ? `${cloudHealth.cpu.systemPercent}%` : 'N/A'}
+                                  </dd>
+                                </div>
+                                {cloudHealth.cpu.systemPercent != null && (
+                                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full ${
+                                        cloudHealth.cpu.systemPercent > 90 ? 'bg-red-500' :
+                                        cloudHealth.cpu.systemPercent > 70 ? 'bg-yellow-500' : 'bg-green-500'
+                                      }`}
+                                      style={{ width: `${Math.min(100, cloudHealth.cpu.systemPercent)}%` }}
+                                    ></div>
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <dt className="text-gray-600 dark:text-gray-400">ACC Process CPU</dt>
+                                  <dd className="font-medium text-gray-900 dark:text-white">
+                                    {cloudHealth.cpu.processPercent != null ? `${cloudHealth.cpu.processPercent}%` : 'N/A'}
+                                  </dd>
+                                </div>
+                                {cloudHealth.cpu.processPercent != null && (
+                                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full ${
+                                        cloudHealth.cpu.processPercent > 90 ? 'bg-red-500' :
+                                        cloudHealth.cpu.processPercent > 70 ? 'bg-yellow-500' : 'bg-green-500'
+                                      }`}
+                                      style={{ width: `${Math.min(100, cloudHealth.cpu.processPercent)}%` }}
+                                    ></div>
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
+                          {cloudHealth.memory && (
+                            <div>
+                              <div className="flex justify-between text-sm mb-1">
+                                <dt className="text-gray-600 dark:text-gray-400">Memory</dt>
+                                <dd className="font-medium text-gray-900 dark:text-white">
+                                  {cloudHealth.memory.usagePercent != null
+                                    ? `${cloudHealth.memory.usagePercent}% (${cloudHealth.memory.usedGB} / ${cloudHealth.memory.totalGB} GB)`
+                                    : 'N/A'}
+                                </dd>
+                              </div>
+                              {cloudHealth.memory.usagePercent != null && (
+                                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full ${
+                                      cloudHealth.memory.usagePercent > 90 ? 'bg-red-500' :
+                                      cloudHealth.memory.usagePercent > 70 ? 'bg-yellow-500' : 'bg-green-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, cloudHealth.memory.usagePercent)}%` }}
+                                  ></div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </dl>
+                      </div>
+                    )}
+                  </>
+                ) : cloudStatus?.hasToken && !cloudStatus?.isExpired ? (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 text-sm text-blue-700 dark:text-blue-400">
+                    No cloud health data matched for this server.
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400">
+                    <Cloud className="h-4 w-4 inline mr-1.5" />
+                    Connect to Avigilon Cloud for hardware health data.
+                    <a href="/cloud" className="ml-1 text-blue-600 dark:text-blue-400 hover:underline">Set up Cloud connection</a>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -296,6 +564,18 @@ const Dashboard = () => {
                 <div className={`h-3 w-3 rounded-full ${getStatusColor(connectionStatus)}`}></div>
                 <span className="text-sm text-gray-600 dark:text-gray-300 capitalize">{connectionStatus}</span>
               </div>
+              {cloudStatus && (
+                <div className="flex items-center space-x-2" title={cloudStatus.hasToken && !cloudStatus.isExpired ? `Cloud token expires: ${new Date(cloudStatus.expiresAt * 1000).toLocaleString()}` : ''}>
+                  <div className={`h-3 w-3 rounded-full ${
+                    cloudStatus.hasToken && !cloudStatus.isExpired ? 'bg-blue-500' :
+                    cloudStatus.hasToken && cloudStatus.isExpired ? 'bg-orange-500' :
+                    'bg-gray-400'
+                  }`}></div>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                    Cloud {cloudStatus.hasToken ? (cloudStatus.isExpired ? 'Expired' : 'OK') : 'Off'}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -514,12 +794,6 @@ const Dashboard = () => {
                     >
                       Views <SortIndicator column="views" />
                     </th>
-                    <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
-                      onClick={() => handleSort('maxRecording')}
-                    >
-                      Max Recording <SortIndicator column="maxRecording" />
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -542,9 +816,6 @@ const Dashboard = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {server.viewCount}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        30 days
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -560,6 +831,7 @@ const Dashboard = () => {
       {selectedServer && (
         <ServerDetailModal
           server={selectedServer}
+          cloudHealth={getCloudHealthForServer(selectedServer.name)}
           onClose={() => setSelectedServer(null)}
         />
       )}

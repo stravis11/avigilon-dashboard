@@ -13,6 +13,7 @@ import {
   getServers,
   getServerIds,
   getServerById,
+  getServerExtendedInfo,
   // Recording
   getRecordingRetention,
   getServersMaxRecordingDays,
@@ -20,6 +21,8 @@ import {
   getHealth,
   getSiteHealth,
   getCapabilities,
+  getEntities,
+  getEventSubtopics,
   // Alarms
   getAlarms,
   getAlarmById,
@@ -35,6 +38,16 @@ import {
   // Dashboard
   getDashboardStats,
 } from '../controllers/avigilonController.js';
+
+import {
+  setCloudToken,
+  getCloudStatus,
+  clearCloudToken,
+  getCloudServers,
+  getCloudServerDetails,
+  getCloudHealthSummary,
+  triggerTokenRefresh,
+} from '../controllers/cloudController.js';
 
 const router = express.Router();
 
@@ -56,6 +69,10 @@ router.post('/logout', logout);
 // Capabilities
 router.get('/capabilities', getCapabilities);
 
+// Entities & Events (for health monitoring)
+router.get('/entities', getEntities);
+router.get('/event-subtopics', getEventSubtopics);
+
 // Server info
 router.get('/server', getServerInfo);
 router.get('/servers', getServers);
@@ -63,6 +80,7 @@ router.get('/server/ids', getServerIds);
 router.get('/servers/max-recording-days', getServersMaxRecordingDays);
 router.get('/servers/:serverId', getServerById);
 router.get('/servers/:serverId/retention', getRecordingRetention);
+router.get('/servers/:serverId/extended', getServerExtendedInfo);
 
 // Sites
 router.get('/sites', getSites);
@@ -85,5 +103,14 @@ router.get('/events/search', searchEvents);
 
 // Dashboard
 router.get('/dashboard/stats', getDashboardStats);
+
+// Cloud API (Hardware Health Monitoring)
+router.post('/cloud/token', setCloudToken);
+router.get('/cloud/status', getCloudStatus);
+router.delete('/cloud/token', clearCloudToken);
+router.get('/cloud/servers', getCloudServers);
+router.get('/cloud/servers/:serverId', getCloudServerDetails);
+router.get('/cloud/health-summary', getCloudHealthSummary);
+router.post('/cloud/refresh-token', triggerTokenRefresh);
 
 export default router;

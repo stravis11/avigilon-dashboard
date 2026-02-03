@@ -397,20 +397,55 @@ class AvigilonService {
 
   /**
    * Get detailed server info for a single server
-   * API: GET /server?id=xxx
+   * API: GET /server?ids=xxx
    */
   async getServerDetails(serverId) {
     try {
       await this.ensureSession();
       const response = await this.axiosInstance.get('/mt/api/rest/v1/server', {
-        params: { id: serverId }
+        params: { ids: serverId }
       });
-      console.log(`Server ${serverId} details:`, JSON.stringify(response.data, null, 2));
+      console.log(`Server ${serverId} details:`, JSON.stringify(response.data, null, 2).substring(0, 1000));
       return response.data;
     } catch (error) {
       console.error(`Failed to get server details for ${serverId}:`, error.message);
       return null;
     }
+  }
+
+  /**
+   * Get extended server info by trying multiple endpoints
+   * Attempts to find storage, uptime, and other details
+   */
+  async getServerExtendedInfo(serverId) {
+    await this.ensureSession();
+
+    const results = {};
+
+    // Try various endpoints that might have storage/uptime info
+    const endpoints = [
+      { name: 'server', path: '/mt/api/rest/v1/server', params: { id: serverId } },
+      { name: 'serverStatus', path: '/mt/api/rest/v1/server/status', params: { id: serverId } },
+      { name: 'storage', path: '/mt/api/rest/v1/storage', params: { serverId } },
+      { name: 'storageInfo', path: '/mt/api/rest/v1/storage/info', params: { serverId } },
+      { name: 'diskInfo', path: '/mt/api/rest/v1/disk', params: { serverId } },
+      { name: 'systemInfo', path: '/mt/api/rest/v1/system/info', params: { serverId } },
+      { name: 'diagnostics', path: '/mt/api/rest/v1/diagnostics', params: { serverId } },
+      { name: 'health', path: '/mt/api/rest/v1/health', params: { serverId } },
+      { name: 'statistics', path: '/mt/api/rest/v1/statistics', params: { serverId } }
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await this.axiosInstance.get(endpoint.path, { params: endpoint.params });
+        results[endpoint.name] = response.data;
+        console.log(`[${endpoint.name}] Success:`, JSON.stringify(response.data, null, 2));
+      } catch (error) {
+        results[endpoint.name] = { error: error.response?.status || error.message };
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -425,6 +460,10 @@ class AvigilonService {
     try {
       await this.ensureSession();
       const response = await this.axiosInstance.get('/mt/api/rest/v1/servers');
+      // Log first server to see available fields
+      if (response.data?.result?.servers?.[0]) {
+        console.log('Server data sample:', JSON.stringify(response.data.result.servers[0], null, 2));
+      }
       this.setCache(cacheKey, response.data);
       return response.data;
     } catch (error) {
@@ -441,6 +480,10 @@ class AvigilonService {
     try {
       await this.ensureSession();
       const response = await this.axiosInstance.get('/mt/api/rest/v1/server/ids');
+      // Log first server to see available fields
+      if (response.data?.result?.servers?.[0]) {
+        console.log('ServerIds data sample:', JSON.stringify(response.data.result.servers[0], null, 2));
+      }
       return response.data;
     } catch (error) {
       console.error('Failed to get server IDs:', error.message);
@@ -554,6 +597,38 @@ class AvigilonService {
   }
 
   /**
+   * Get all entities status
+   * API: GET /entities
+   */
+  async getEntities() {
+    try {
+      await this.ensureSession();
+      const response = await this.axiosInstance.get('/mt/api/rest/v1/entities');
+      console.log('Entities response:', JSON.stringify(response.data, null, 2).substring(0, 2000));
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get entities:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available event subtopics
+   * API: GET /event-subtopics
+   */
+  async getEventSubtopics() {
+    try {
+      await this.ensureSession();
+      const response = await this.axiosInstance.get('/mt/api/rest/v1/event-subtopics');
+      console.log('Event subtopics:', JSON.stringify(response.data, null, 2).substring(0, 3000));
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get event subtopics:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Update alarm (claim, acknowledge, trigger, dismiss)
    * API: PUT /alarm
    */
@@ -628,44 +703,66 @@ class AvigilonService {
         return null;
       }
 
-      // Pick first camera from this server that has recorded data
-      const sampleCamera = camerasOnServer.find(cam => cam.recordedData) || camerasOnServer[0];
-
       await this.ensureSession();
 
-      // Query timeline starting from 90 days ago with largest scope
-      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      // Sample up to 5 cameras per server for more accurate results
+      const sampleSize = Math.min(5, camerasOnServer.length);
+      const sampleCameras = camerasOnServer
+        .filter(cam => cam.recordedData)
+        .slice(0, sampleSize);
 
-      const response = await this.axiosInstance.get('/mt/api/rest/v1/timeline', {
-        params: {
-          cameraIds: sampleCamera.id,
-          scope: '1000000_SECONDS',
-          start: ninetyDaysAgo.toISOString()
-        }
-      });
-
-      // Find earliest recording timestamp from timeline
-      const result = response.data?.result;
-      if (result && result.cameras && result.cameras.length > 0) {
-        const cameraTimeline = result.cameras[0];
-        if (cameraTimeline.unloaded && cameraTimeline.unloaded.length > 0) {
-          // unloaded contains time ranges with recordings
-          const earliestRange = cameraTimeline.unloaded[0];
-          if (earliestRange && earliestRange.start) {
-            const earliestDate = new Date(earliestRange.start);
-            const now = new Date();
-            const daysDiff = Math.floor((now - earliestDate) / (1000 * 60 * 60 * 24));
-            return daysDiff;
-          }
-        }
+      // If no cameras with recordedData, fall back to first few cameras
+      if (sampleCameras.length === 0) {
+        sampleCameras.push(...camerasOnServer.slice(0, sampleSize));
       }
 
+      // Query timeline for 90 days ago
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+      // Query all sample cameras in parallel
+      const results = await Promise.all(sampleCameras.map(async (camera) => {
+        try {
+          const response = await this.axiosInstance.get('/mt/api/rest/v1/timeline', {
+            params: {
+              cameraIds: camera.id,
+              scope: '1000000_SECONDS',
+              start: ninetyDaysAgo.toISOString()
+            }
+          });
+
+          const result = response.data?.result;
+          const timelines = result?.timelines || result?.cameras || [];
+
+          if (timelines.length > 0) {
+            const cameraTimeline = timelines[0];
+            const recordings = cameraTimeline.record || cameraTimeline.unloaded || [];
+            if (recordings.length > 0) {
+              const earliestRange = recordings[0];
+              if (earliestRange && earliestRange.start) {
+                const earliestDate = new Date(earliestRange.start);
+                const now = new Date();
+                return Math.floor((now - earliestDate) / (1000 * 60 * 60 * 24));
+              }
+            }
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      }));
+
+      // Return the maximum value from all sampled cameras
+      const validResults = results.filter(r => r !== null);
+      if (validResults.length > 0) {
+        const maxDays = Math.max(...validResults);
+        console.log(`[${serverId}] Max recording days: ${maxDays} (sampled ${validResults.length} cameras)`);
+        return maxDays;
+      }
+
+      console.log(`[${serverId}] No recording data found in timeline`);
       return null;
     } catch (error) {
       console.error(`Failed to get max recording days for server ${serverId}:`, error.message);
-      if (error.response?.data) {
-        console.error('Response:', JSON.stringify(error.response.data));
-      }
       return null;
     }
   }
@@ -737,20 +834,14 @@ class AvigilonService {
       const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
 
       // Get standby server IDs
-      const standbyServerIds = servers
-        .filter(server => STANDBY_SERVERS.includes(server.name))
-        .map(server => server.id);
-
-      // Filter active cameras (excluding standby servers)
-      const activeCameras = cameras.filter(
-        camera => !standbyServerIds.includes(camera.serverId)
-      );
-
       // Calculate per-server stats with resolved IPs
       const serverStats = await Promise.all(servers.map(async server => {
         const serverCameras = cameras.filter(cam => cam.serverId === server.id);
         const isStandby = STANDBY_SERVERS.includes(server.name);
+
+        // Resolve server IP
         const ip = await resolveServerIP(server.name);
+
         return {
           id: server.id,
           name: server.name,

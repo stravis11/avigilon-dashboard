@@ -6,6 +6,8 @@ services:
       - "3001:3001"
     env_file:
       - ./backend/.env
+    environment:
+      - TOKEN_FETCHER_URL=http://token-fetcher:8080
     volumes:
       # Persist user data
       - ./backend/src/data:/app/src/data
@@ -24,6 +26,22 @@ services:
       - "3000:80"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  token-fetcher:
+    build: ./token-fetcher
+    container_name: avigilon-token-fetcher
+    env_file:
+      - ./backend/.env
+    environment:
+      - BACKEND_URL=http://backend:3001
+      - REFRESH_INTERVAL_HOURS=24
+      - RETRY_INTERVAL_MINUTES=5
+    volumes:
+      - ./token-fetcher/screenshots:/app/screenshots
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 networks:

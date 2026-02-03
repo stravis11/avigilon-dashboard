@@ -99,6 +99,15 @@ const apiService = {
 
   // Dashboard
   getDashboardStats: () => apiClient.get('/dashboard/stats'),
+
+  // Cloud API (Hardware Health Monitoring)
+  getCloudStatus: () => apiClient.get('/cloud/status'),
+  setCloudToken: (token) => apiClient.post('/cloud/token', { token }),
+  clearCloudToken: () => apiClient.delete('/cloud/token'),
+  getCloudServers: () => apiClient.get('/cloud/servers'),
+  getCloudServerDetails: (serverId) => apiClient.get(`/cloud/servers/${serverId}`),
+  getCloudHealthSummary: () => apiClient.get('/cloud/health-summary'),
+  refreshCloudToken: () => apiClient.post('/cloud/refresh-token'),
 };
 
 export default apiService;

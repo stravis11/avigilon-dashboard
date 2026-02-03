@@ -165,6 +165,19 @@ export const getServerById = async (req, res) => {
   }
 };
 
+export const getServerExtendedInfo = async (req, res) => {
+  try {
+    const { serverId } = req.params;
+    const extendedInfo = await avigilonService.getServerExtendedInfo(serverId);
+    res.json({ success: true, data: extendedInfo });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
 // Recording
 export const getRecordingRetention = async (req, res) => {
   try {
@@ -242,6 +255,30 @@ export const getCapabilities = async (req, res) => {
   try {
     const capabilities = await avigilonService.getCapabilities();
     res.json({ success: true, data: capabilities });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+export const getEntities = async (req, res) => {
+  try {
+    const entities = await avigilonService.getEntities();
+    res.json({ success: true, data: entities });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+export const getEventSubtopics = async (req, res) => {
+  try {
+    const subtopics = await avigilonService.getEventSubtopics();
+    res.json({ success: true, data: subtopics });
   } catch (error) {
     res.status(500).json({
       success: false,
