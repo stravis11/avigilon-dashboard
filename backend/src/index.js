@@ -24,13 +24,15 @@ if (result.error) {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Security middleware - configure to allow cross-origin images
+// Security middleware - configure to allow cross-origin images and video streaming
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'http://localhost:3000', 'http://localhost:3001'],
+      mediaSrc: ["'self'", 'blob:'],
+      connectSrc: ["'self'", 'blob:'],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
     },

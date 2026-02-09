@@ -364,6 +364,52 @@ class AvigilonService {
   }
 
   /**
+   * Get MPD manifest as raw XML text for DASH streaming proxy
+   * API: GET /media?cameraId=xxx&format=mpd
+   * Returns raw XML string (not parsed JSON)
+   */
+  async getMediaStreamManifest(cameraId) {
+    try {
+      await this.ensureSession();
+      const response = await this.axiosInstance.get('/mt/api/rest/v1/media', {
+        params: {
+          cameraId: cameraId,
+          format: 'mpd'
+        },
+        responseType: 'text',
+        transformResponse: [(data) => data]
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to get MPD manifest for camera ${cameraId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Proxy a media stream request to the ACC server (streaming response)
+   * Used for DASH/fmp4 streaming - pipes ACC response directly to caller
+   * @param {string} queryString - The original query string from the rewritten BaseURL
+   * @returns {Object} { stream: ReadableStream, contentType: string, headers: object }
+   */
+  async proxyMediaStream(queryString) {
+    try {
+      await this.ensureSession();
+      const response = await this.axiosInstance.get(`/mt/api/rest/v1/media?${queryString}`, {
+        responseType: 'stream'
+      });
+      return {
+        stream: response.data,
+        contentType: response.headers['content-type'] || 'video/mp4',
+        headers: response.headers
+      };
+    } catch (error) {
+      console.error('Failed to proxy media stream:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get server information
    * API: GET /server
    */

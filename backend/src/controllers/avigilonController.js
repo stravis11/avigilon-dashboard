@@ -427,6 +427,66 @@ export const logout = async (req, res) => {
   }
 };
 
+// DASH Streaming - MPD manifest proxy with URL rewriting
+export const getStreamManifest = async (req, res) => {
+  try {
+    const { cameraId } = req.params;
+    const mpdXml = await avigilonService.getMediaStreamManifest(cameraId);
+
+    // Rewrite BaseURL elements to proxy through our backend
+    // Original: <BaseURL>/mt/api/rest/v1/media?ctx=...&amp;session=...&amp;cameraId=...</BaseURL>
+    // Rewritten: <BaseURL>/api/stream/segment?ctx=...&amp;cameraId=...</BaseURL>
+    // Note: XML uses &amp; as separator, not bare &
+    const rewrittenMpd = mpdXml.replace(
+      /<BaseURL>\/mt\/api\/rest\/v1\/media\?([^<]+)<\/BaseURL>/g,
+      (match, queryString) => {
+        // Remove session param since our proxy handles auth
+        // Split on &amp; (XML entity) to get individual params
+        const cleanedQuery = queryString
+          .split('&amp;')
+          .filter(param => !param.startsWith('session='))
+          .join('&amp;');
+        return `<BaseURL>/api/stream/segment?${cleanedQuery}</BaseURL>`;
+      }
+    );
+
+    res.set('Content-Type', 'application/dash+xml');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(rewrittenMpd);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// DASH Streaming - Proxy segment/stream requests to ACC server (streaming pipe)
+export const proxyStreamSegment = async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query).toString();
+    const { stream, contentType } = await avigilonService.proxyMediaStream(queryString);
+
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Transfer-Encoding', 'chunked');
+
+    // Pipe the ACC stream directly to the client response
+    stream.pipe(res);
+
+    // Clean up if client disconnects
+    req.on('close', () => {
+      stream.destroy();
+    });
+  } catch (error) {
+    console.error('Stream segment proxy error:', error.message);
+    res.status(502).json({
+      success: false,
+      error: 'Failed to fetch stream segment'
+    });
+  }
+};
+
 // Dashboard Stats (pre-computed for faster loading)
 export const getDashboardStats = async (req, res) => {
   try {

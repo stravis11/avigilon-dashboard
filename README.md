@@ -431,7 +431,7 @@ avigilon-app/
 
 ## Future Enhancements
 
-- [ ] Live video streaming
+- [x] Live video streaming
 - [ ] PTZ camera controls
 - [ ] Event notifications
 - [ ] Alarm management

@@ -8,6 +8,8 @@ import {
   getCameraById,
   getCameraSnapshot,
   getMediaStreamInfo,
+  getStreamManifest,
+  proxyStreamSegment,
   // Servers
   getServerInfo,
   getServers,
@@ -91,6 +93,8 @@ router.get('/cameras', getCameras);
 router.get('/cameras/:cameraId', getCameraById);
 router.get('/cameras/:cameraId/snapshot', getCameraSnapshot);
 router.get('/cameras/:cameraId/stream', getMediaStreamInfo);
+router.get('/cameras/:cameraId/stream/manifest', getStreamManifest);
+router.get('/stream/segment', proxyStreamSegment);
 router.get('/cameras/:cameraId/timeline', getTimeline);
 
 // Alarms

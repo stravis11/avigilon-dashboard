@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, RefreshCw, AlertCircle, X, ChevronUp, ChevronDown, ImageOff, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import apiService from '../services/apiService';
+import LiveStreamModal from '../components/LiveStreamModal';
 
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
 const DEFAULT_PAGE_SIZE = 50;
 
 // Thumbnail component with lazy loading and staggered requests
-const CameraThumbnail = ({ cameraId, cameraName, index = 0 }) => {
+const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick }) => {
   const [status, setStatus] = useState('idle'); // idle, waiting, loading, loaded, error
   const [shouldLoad, setShouldLoad] = useState(false);
   const [imageSrc, setImageSrc] = useState(null);
@@ -63,7 +64,7 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0 }) => {
   }, [shouldLoad, cameraId]);
 
   return (
-    <div ref={containerRef} className="w-20 h-14 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden relative">
+    <div ref={containerRef} className="w-20 h-14 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden relative group">
       {(status === 'idle' || status === 'loading') && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="animate-pulse bg-gray-300 dark:bg-gray-600 w-full h-full"></div>
@@ -80,6 +81,20 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0 }) => {
           alt={cameraName || 'Camera'}
           className="w-full h-full object-cover"
         />
+      )}
+      {status === 'loaded' && onLiveClick && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onLiveClick();
+          }}
+          className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <span className="flex items-center space-x-1 px-2 py-1 bg-red-600 text-white text-xs font-bold rounded">
+            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+            <span>LIVE</span>
+          </span>
+        </button>
       )}
     </div>
   );
@@ -168,6 +183,7 @@ const Cameras = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [liveStreamCamera, setLiveStreamCamera] = useState(null);
 
   useEffect(() => {
     loadCameras();
@@ -514,7 +530,12 @@ const Cameras = () => {
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <CameraThumbnail cameraId={camera.id} cameraName={camera.name} index={index} />
+                        <CameraThumbnail
+                          cameraId={camera.id}
+                          cameraName={camera.name}
+                          index={index}
+                          onLiveClick={() => setLiveStreamCamera(camera)}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -775,6 +796,15 @@ const Cameras = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Live Stream Modal */}
+      {liveStreamCamera && (
+        <LiveStreamModal
+          cameraId={liveStreamCamera.id}
+          cameraName={liveStreamCamera.name || liveStreamCamera.deviceName}
+          onClose={() => setLiveStreamCamera(null)}
+        />
       )}
     </div>
   );
