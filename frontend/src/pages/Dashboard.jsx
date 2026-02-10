@@ -536,21 +536,21 @@ const Dashboard = () => {
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-y-2">
             <div className="flex items-center space-x-3">
               {/* Georgia Tech Logo */}
               <img
                 src="https://www.pngall.com/wp-content/uploads/15/Georgia-Tech-Logo-No-Background.png"
                 alt="Georgia Tech Logo"
-                className="h-10 w-auto"
+                className="h-8 sm:h-10 w-auto"
               />
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
                 Georgia Tech Avigilon
               </h1>
             </div>
             <div className="flex items-center space-x-4">
               {loadingMessage && (statsLoading || sitesLoading) && (
-                <span className="text-sm text-gray-500 dark:text-gray-400">{loadingMessage}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">{loadingMessage}</span>
               )}
               <button
                 onClick={loadDashboardData}
@@ -562,7 +562,7 @@ const Dashboard = () => {
               </button>
               <div className="flex items-center space-x-2">
                 <div className={`h-3 w-3 rounded-full ${getStatusColor(connectionStatus)}`}></div>
-                <span className="text-sm text-gray-600 dark:text-gray-300 capitalize">{connectionStatus}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300 capitalize hidden sm:inline">{connectionStatus}</span>
               </div>
               {cloudStatus && (
                 <div className="flex items-center space-x-2" title={cloudStatus.hasToken && !cloudStatus.isExpired ? `Cloud token expires: ${new Date(cloudStatus.expiresAt * 1000).toLocaleString()}` : ''}>
@@ -571,7 +571,7 @@ const Dashboard = () => {
                     cloudStatus.hasToken && cloudStatus.isExpired ? 'bg-orange-500' :
                     'bg-gray-400'
                   }`}></div>
-                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                  <span className="text-sm text-gray-600 dark:text-gray-300 hidden sm:inline">
                     Cloud {cloudStatus.hasToken ? (cloudStatus.isExpired ? 'Expired' : 'OK') : 'Off'}
                   </span>
                 </div>
@@ -611,10 +611,10 @@ const Dashboard = () => {
                     <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{dashboardStats?.totalServers || 0}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{dashboardStats?.totalServers || 0}</p>
                 )}
               </div>
-              <Server className="h-12 w-12 text-purple-500" />
+              <Server className="h-8 w-8 sm:h-12 sm:w-12 text-purple-500" />
             </div>
           </div>
 
@@ -628,10 +628,10 @@ const Dashboard = () => {
                     <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{sites.length}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{sites.length}</p>
                 )}
               </div>
-              <MapPin className="h-12 w-12 text-blue-500" />
+              <MapPin className="h-8 w-8 sm:h-12 sm:w-12 text-blue-500" />
             </div>
           </div>
 
@@ -645,12 +645,12 @@ const Dashboard = () => {
                     <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
                     {dashboardStats?.totalViews || 0}
                   </p>
                 )}
               </div>
-              <Camera className="h-12 w-12 text-green-500" />
+              <Camera className="h-8 w-8 sm:h-12 sm:w-12 text-green-500" />
             </div>
           </div>
 
@@ -664,12 +664,12 @@ const Dashboard = () => {
                     <span className="text-sm text-gray-500 dark:text-gray-400">Loading...</span>
                   </div>
                 ) : (
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
                     {dashboardStats?.totalCameraChannels || 0}
                   </p>
                 )}
               </div>
-              <Camera className="h-12 w-12 text-teal-500" />
+              <Camera className="h-8 w-8 sm:h-12 sm:w-12 text-teal-500" />
             </div>
           </div>
 
@@ -677,11 +677,11 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Connection</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white capitalize">
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white capitalize">
                   {connectionStatus}
                 </p>
               </div>
-              <Activity className="h-12 w-12 text-orange-500" />
+              <Activity className="h-8 w-8 sm:h-12 sm:w-12 text-orange-500" />
             </div>
           </div>
         </div>
@@ -725,10 +725,10 @@ const Dashboard = () => {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       Status
                     </th>
                   </tr>
@@ -736,10 +736,10 @@ const Dashboard = () => {
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {sites.map((site) => (
                     <tr key={site.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                         {site.name || 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                         <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-400">
                           Active
                         </span>
@@ -771,25 +771,25 @@ const Dashboard = () => {
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
                       onClick={() => handleSort('name')}
                     >
                       Name <SortIndicator column="name" />
                     </th>
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors hidden sm:table-cell"
                       onClick={() => handleSort('ip')}
                     >
                       Server IP <SortIndicator column="ip" />
                     </th>
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
                       onClick={() => handleSort('cameraChannels')}
                     >
                       Camera Channels <SortIndicator column="cameraChannels" />
                     </th>
                     <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors hidden md:table-cell"
                       onClick={() => handleSort('views')}
                     >
                       Views <SortIndicator column="views" />
@@ -803,17 +803,17 @@ const Dashboard = () => {
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
                       onClick={() => setSelectedServer(server)}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                         {server.name || 'N/A'}
                         {server.isStandby && <span className="ml-2 text-gray-500 dark:text-gray-400 font-normal">(Standby)</span>}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 hidden sm:table-cell">
                         {server.host || server.address || server.ip || 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {server.cameraChannels}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 hidden md:table-cell">
                         {server.viewCount}
                       </td>
                     </tr>

@@ -71,11 +71,11 @@ const CloudSettings = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-y-3 mb-8">
         <div className="flex items-center space-x-3">
           <Cloud className="h-8 w-8 text-blue-600 dark:text-blue-400" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Cloud Connection</h1>
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">Cloud Connection</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Connect to Avigilon Cloud for hardware health monitoring
             </p>
@@ -87,7 +87,8 @@ const CloudSettings = () => {
           className="flex items-center space-x-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span>{refreshing ? 'Refreshing...' : 'Refresh Token'}</span>
+          <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh Token'}</span>
+          <span className="sm:hidden">{refreshing ? '...' : 'Refresh'}</span>
         </button>
       </div>
 

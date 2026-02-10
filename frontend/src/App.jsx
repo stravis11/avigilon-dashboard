@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Camera, Users, Cloud, LogOut } from 'lucide-react';
+import { LayoutDashboard, Camera, Users, Cloud, LogOut, Menu, X } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Cameras from './pages/Cameras';
 import Login from './pages/Login';
@@ -14,6 +14,12 @@ import ThemeToggle from './components/ThemeToggle';
 const Navigation = () => {
   const location = useLocation();
   const { isAuthenticated, isAdmin, user, logout } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   // Don't show navigation on login page or when not authenticated
   if (!isAuthenticated || location.pathname === '/login') {
@@ -35,7 +41,13 @@ const Navigation = () => {
     <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
-          <div className="flex space-x-8">
+          {/* Mobile branding */}
+          <div className="flex items-center md:hidden">
+            <LayoutDashboard className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            <span className="ml-2 font-semibold text-gray-900 dark:text-white">Avigilon</span>
+          </div>
+          {/* Desktop nav links */}
+          <div className="hidden md:flex space-x-8">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
@@ -56,7 +68,7 @@ const Navigation = () => {
             })}
           </div>
           <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600 dark:text-gray-300">
+            <span className="text-sm text-gray-600 dark:text-gray-300 hidden sm:inline">
               {user?.name}
               {isAdmin && (
                 <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(Admin)</span>
@@ -70,8 +82,48 @@ const Navigation = () => {
             >
               <LogOut className="h-5 w-5" />
             </button>
+            {/* Hamburger menu button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
           </div>
         </div>
+        {/* Mobile menu panel */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-200 dark:border-gray-700 py-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center space-x-3 px-3 py-3 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="font-medium">{item.label}</span>
+                </Link>
+              );
+            })}
+            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 px-3 sm:hidden">
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                {user?.name}
+                {isAdmin && (
+                  <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(Admin)</span>
+                )}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

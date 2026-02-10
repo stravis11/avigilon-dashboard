@@ -64,7 +64,7 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick }) => {
   }, [shouldLoad, cameraId]);
 
   return (
-    <div ref={containerRef} className="w-20 h-14 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden relative group">
+    <div ref={containerRef} className="w-16 h-11 sm:w-20 sm:h-14 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden relative group">
       {(status === 'idle' || status === 'loading') && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="animate-pulse bg-gray-300 dark:bg-gray-600 w-full h-full"></div>
@@ -401,11 +401,11 @@ const Cameras = () => {
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-y-3">
             <div className="flex items-center space-x-3">
               <Camera className="h-8 w-8 text-blue-600 dark:text-blue-400" />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Camera Management</h1>
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">Camera Management</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-wrap">
                   <span>
                     {filteredCount} active cameras
@@ -433,10 +433,10 @@ const Cameras = () => {
             </div>
             <button
               onClick={loadCameras}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+              className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
             >
               <RefreshCw className="h-4 w-4" />
-              <span>Refresh</span>
+              <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
           {/* Search Bar */}
@@ -493,29 +493,29 @@ const Cameras = () => {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">
+                    <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20 sm:w-24">
                       Snapshot
                     </th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
                       onClick={() => handleSort('name')}
                     >
                       Name <SortIndicator column="name" />
                     </th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors hidden sm:table-cell"
                       onClick={() => handleSort('ip')}
                     >
                       IP Address <SortIndicator column="ip" />
                     </th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors hidden lg:table-cell"
                       onClick={() => handleSort('mac')}
                     >
                       MAC Address <SortIndicator column="mac" />
                     </th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
+                      className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors hidden md:table-cell"
                       onClick={() => handleSort('model')}
                     >
                       Model <SortIndicator column="model" />
@@ -529,7 +529,7 @@ const Cameras = () => {
                       onClick={() => handleCameraClick(camera)}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
                     >
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2 sm:px-4 py-3 whitespace-nowrap">
                         <CameraThumbnail
                           cameraId={camera.id}
                           cameraName={camera.name}
@@ -537,7 +537,7 @@ const Cameras = () => {
                           onLiveClick={() => setLiveStreamCamera(camera)}
                         />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-2 sm:px-4 py-3">
                         <div className="text-sm font-medium text-gray-900 dark:text-white">
                           {camera.name || camera.deviceName || 'Unnamed Camera'}
                         </div>
@@ -547,13 +547,13 @@ const Cameras = () => {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-mono">
+                      <td className="px-2 sm:px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-mono hidden sm:table-cell">
                         {getIpAddress(camera)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-mono">
+                      <td className="px-2 sm:px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-mono hidden lg:table-cell">
                         {getMacAddress(camera)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      <td className="px-2 sm:px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 hidden md:table-cell">
                         {camera.model || camera.deviceModel || 'N/A'}
                       </td>
                     </tr>
@@ -565,7 +565,7 @@ const Cameras = () => {
             {/* Pagination Controls */}
             <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row items-center justify-between gap-4">
               {/* Page size selector */}
-              <div className="flex items-center space-x-2">
+              <div className="hidden sm:flex items-center space-x-2">
                 <span className="text-sm text-gray-500 dark:text-gray-400">Show</span>
                 <select
                   value={pageSize}
@@ -589,7 +589,7 @@ const Cameras = () => {
                 <button
                   onClick={() => setCurrentPage(1)}
                   disabled={currentPage === 1}
-                  className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
+                  className="hidden sm:inline-block px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
                 >
                   First
                 </button>
@@ -642,7 +642,7 @@ const Cameras = () => {
                 <button
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage === totalPages}
-                  className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
+                  className="hidden sm:inline-block px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
                 >
                   Last
                 </button>
@@ -714,7 +714,7 @@ const Cameras = () => {
               <div className="space-y-6">
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Camera Information</h3>
-                  <dl className="grid grid-cols-2 gap-4">
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <dt className="text-sm text-gray-600 dark:text-gray-400">Name</dt>
                       <dd className="text-sm font-medium text-gray-900 dark:text-white">
@@ -775,7 +775,7 @@ const Cameras = () => {
                         {getServerName(selectedCamera.serverId)}
                       </dd>
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <dt className="text-sm text-gray-600 dark:text-gray-400">Camera ID</dt>
                       <dd className="text-sm font-medium text-gray-900 dark:text-white font-mono text-xs break-all">
                         {selectedCamera.id}

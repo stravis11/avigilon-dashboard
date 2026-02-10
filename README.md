@@ -441,7 +441,7 @@ avigilon-app/
 - [x] Cloud hardware health monitoring
 - [x] Automated cloud token management
 - [ ] Multi-site support
-- [ ] Mobile responsive improvements
+- [x] Mobile responsive improvements
 - [ ] Real-time camera status updates via WebSocket
 - [ ] Export camera snapshots
 - [ ] Bulk camera operations
