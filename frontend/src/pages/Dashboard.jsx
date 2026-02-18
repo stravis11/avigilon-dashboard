@@ -54,7 +54,6 @@ const Dashboard = () => {
     apiService.getDashboardStats()
       .then((response) => {
         const stats = response?.data || response;
-        console.log('Dashboard stats loaded:', stats);
         setDashboardStats(stats);
         setConnectionStatus('connected');
         setLoadingMessage(`Loaded ${stats?.totalServers || 0} servers, ${stats?.totalCameraChannels || 0} cameras`);
@@ -69,7 +68,6 @@ const Dashboard = () => {
     apiService.getSites()
       .then((response) => {
         const sitesList = extractArray(response, 'sites');
-        console.log('Sites loaded:', sitesList.length);
         setSites(sitesList);
         setConnectionStatus('connected');
       })
@@ -87,30 +85,26 @@ const Dashboard = () => {
       })
       .catch((err) => console.error('Failed to load server info:', err.message));
 
-    // Cloud health data (non-blocking — fails silently if no token)
-    // Fetch health summary if: token is valid OR cached data exists on backend
+    // Cloud status indicator — fast in-memory check on backend
     apiService.getCloudStatus()
       .then((response) => {
-        const status = response?.data || response;
-        setCloudStatus(status);
-        if ((status.hasToken && !status.isExpired) || status.hasCachedData) {
-          return apiService.getCloudHealthSummary();
-        }
-        return null;
+        setCloudStatus(response?.data || response);
       })
+      .catch((err) => console.warn('Cloud status unavailable:', err.message));
+
+    // Cloud health — runs in parallel with status; fails silently if no token/cache
+    apiService.getCloudHealthSummary()
       .then((response) => {
-        if (response) {
-          const healthList = response?.data || response;
-          const healthMap = {};
-          (Array.isArray(healthList) ? healthList : []).forEach(server => {
-            if (server.serverName) {
-              healthMap[server.serverName.toLowerCase()] = server;
-            }
-          });
-          setCloudHealthData(healthMap);
-        }
+        const healthList = response?.data || response;
+        const healthMap = {};
+        (Array.isArray(healthList) ? healthList : []).forEach(server => {
+          if (server.serverName) {
+            healthMap[server.serverName.toLowerCase()] = server;
+          }
+        });
+        setCloudHealthData(healthMap);
       })
-      .catch((err) => console.warn('Cloud API not available:', err.message));
+      .catch(() => {}); // silent — no token configured or no cached data
   }, []);
 
   const getStatusColor = (status) => {

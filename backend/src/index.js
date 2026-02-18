@@ -12,13 +12,17 @@ const __dirname = dirname(__filename);
 
 // IMPORTANT: Load environment variables FIRST
 const envPath = join(__dirname, '..', '.env');
-console.log('Loading .env from:', envPath);
 const result = dotenv.config({ path: envPath });
+
+// Import logger after dotenv so NODE_ENV is set
+const { logger } = await import('./utils/logger.js');
+
+logger.info('Loading .env from:', envPath);
 if (result.error) {
   console.error('Error loading .env file:', result.error);
 } else {
-  console.log('.env file loaded successfully');
-  console.log('ACC_USER_KEY present:', !!process.env.ACC_USER_KEY);
+  logger.info('.env file loaded successfully');
+  logger.info('ACC_USER_KEY present:', !!process.env.ACC_USER_KEY);
 }
 
 const app = express();
@@ -30,11 +34,19 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'http://localhost:3000', 'http://localhost:3001'],
+      // Allow camera snapshots (data URIs) and DASH blob segments
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      // Required for DASH streaming via dash.js
       mediaSrc: ["'self'", 'blob:'],
       connectSrc: ["'self'", 'blob:'],
       scriptSrc: ["'self'"],
+      // unsafe-inline required for Tailwind CSS utility classes
       styleSrc: ["'self'", "'unsafe-inline'"],
+      // Hardening: block plugin/Flash content, clickjacking, base-tag injection, external form submissions
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
     },
   },
 }));
@@ -59,11 +71,13 @@ app.use('/api/', limiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
-});
+// Request logging middleware (dev only)
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+  });
+}
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -126,44 +140,46 @@ const { default: avigilonService } = await import('./services/avigilonServiceIns
 
 // Pre-warm cache on startup
 const prewarmCache = async () => {
-  console.log('Pre-warming cache...');
+  logger.info('Pre-warming cache...');
   try {
     // Login first to avoid multiple simultaneous login attempts
     await avigilonService.login();
 
     // Then fetch all data in parallel to populate cache
     // Note: getServers() returns 404, so we use getServerIds() instead
-    const [serversResult, sitesResult, camerasResult] = await Promise.allSettled([
+    // getDashboardStats is included so the first user request is always a cache hit
+    const [serversResult, sitesResult, camerasResult, statsResult] = await Promise.allSettled([
       avigilonService.getServerIds(),
       avigilonService.getSites(),
-      avigilonService.getCameras()
+      avigilonService.getCameras(),
+      avigilonService.getDashboardStats()
     ]);
 
     const results = {
       serverIds: serversResult.status === 'fulfilled' ? 'OK' : 'FAILED',
       sites: sitesResult.status === 'fulfilled' ? 'OK' : 'FAILED',
-      cameras: camerasResult.status === 'fulfilled' ? 'OK' : 'FAILED'
+      cameras: camerasResult.status === 'fulfilled' ? 'OK' : 'FAILED',
+      dashboardStats: statsResult.status === 'fulfilled' ? 'OK' : 'FAILED'
     };
 
-    console.log('Cache pre-warm complete:', results);
+    logger.info('Cache pre-warm complete:', results);
 
-    // Test health-related endpoints
-    console.log('\n=== Testing Health-Related Endpoints ===');
+    logger.debug('=== Testing Health-Related Endpoints ===');
     try {
-      const entities = await avigilonService.getEntities();
-      console.log('Entities endpoint works!');
+      await avigilonService.getEntities();
+      logger.debug('Entities endpoint works!');
     } catch (err) {
-      console.log('Entities endpoint error:', err.message);
+      logger.debug('Entities endpoint error:', err.message);
     }
 
     try {
-      const subtopics = await avigilonService.getEventSubtopics();
-      console.log('Event-subtopics endpoint works!');
+      await avigilonService.getEventSubtopics();
+      logger.debug('Event-subtopics endpoint works!');
     } catch (err) {
-      console.log('Event-subtopics endpoint error:', err.message);
+      logger.debug('Event-subtopics endpoint error:', err.message);
     }
   } catch (error) {
-    console.error('Cache pre-warm failed:', error.message);
+    logger.error('Cache pre-warm failed:', error.message);
   }
 };
 

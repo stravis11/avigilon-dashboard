@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
+import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,6 +13,19 @@ class AuthService {
     this.usersFilePath = join(__dirname, '..', 'data', 'users.json');
     this.jwtSecret = process.env.JWT_SECRET || 'avigilon-dashboard-secret-key-change-in-production';
     this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'avigilon-refresh-secret-key-change-in-production';
+
+    if (process.env.NODE_ENV === 'production') {
+      const knownDefaults = [
+        'avigilon-dashboard-secret-key-change-in-production',
+        'avigilon-refresh-secret-key-change-in-production',
+      ];
+      if (!process.env.JWT_SECRET || knownDefaults.includes(process.env.JWT_SECRET)) {
+        throw new Error('FATAL: JWT_SECRET must be set to a secure value in production');
+      }
+      if (!process.env.JWT_REFRESH_SECRET || knownDefaults.includes(process.env.JWT_REFRESH_SECRET)) {
+        throw new Error('FATAL: JWT_REFRESH_SECRET must be set to a secure value in production');
+      }
+    }
     this.users = [];
     this.initialized = false;
   }
@@ -20,7 +34,7 @@ class AuthService {
     if (this.initialized) return;
     await this.loadUsers();
     this.initialized = true;
-    console.log(`Auth service initialized with ${this.users.length} user(s)`);
+    logger.info(`Auth service initialized with ${this.users.length} user(s)`);
   }
 
   async loadUsers() {
@@ -31,7 +45,7 @@ class AuthService {
     } catch (error) {
       if (error.code === 'ENOENT') {
         // File doesn't exist, create with default admin
-        console.log('Users file not found, creating with default admin...');
+        logger.info('Users file not found, creating with default admin...');
         const defaultAdmin = {
           id: '1',
           username: 'admin',

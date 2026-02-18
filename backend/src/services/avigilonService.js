@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import https from 'https';
 import dns from 'dns';
 import { promisify } from 'util';
+import { logger } from '../utils/logger.js';
 
 const dnsLookup = promisify(dns.lookup);
 const DNS_SUFFIX = '.police.gatech.edu';
@@ -35,12 +36,15 @@ class AvigilonService {
     this.cache = new Map();
     this.cacheTTL = 300000; // 5 minutes cache TTL
 
-    // Debug: Log environment variable status
-    console.log('AvigilonService initialized:');
-    console.log('- ACC_SERVER_URL:', this.baseURL ? 'Set' : 'MISSING');
-    console.log('- ACC_USERNAME:', this.username ? 'Set' : 'MISSING');
-    console.log('- ACC_USER_NONCE:', this.userNonce ? 'Set' : 'MISSING');
-    console.log('- ACC_USER_KEY:', this.userKey ? 'Set' : 'MISSING');
+    // Login deduplication: concurrent callers share the same in-flight login promise
+    this._pendingLogin = null;
+
+    // Log environment variable status (dev only)
+    logger.info('AvigilonService initialized:');
+    logger.info('- ACC_SERVER_URL:', this.baseURL ? 'Set' : 'MISSING');
+    logger.info('- ACC_USERNAME:', this.username ? 'Set' : 'MISSING');
+    logger.info('- ACC_USER_NONCE:', this.userNonce ? 'Set' : 'MISSING');
+    logger.info('- ACC_USER_KEY:', this.userKey ? 'Set' : 'MISSING');
 
     // Validate required environment variables
     if (!this.userKey) {
@@ -101,7 +105,7 @@ class AvigilonService {
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
           // Session expired, re-authenticate
-          console.log('Session expired, re-authenticating...');
+          logger.info('Session expired, re-authenticating...');
           await this.login();
           originalRequest.headers['x-avg-session'] = this.sessionToken;
           return this.axiosInstance.request(originalRequest);
@@ -117,7 +121,7 @@ class AvigilonService {
   getCached(key) {
     const cached = this.cache.get(key);
     if (cached && Date.now() < cached.expiry) {
-      console.log(`Cache hit for ${key}`);
+      logger.debug(`Cache hit for ${key}`);
       return cached.data;
     }
     if (cached) {
@@ -134,7 +138,7 @@ class AvigilonService {
       data,
       expiry: Date.now() + this.cacheTTL
     });
-    console.log(`Cached ${key} for ${this.cacheTTL / 1000}s`);
+    logger.debug(`Cached ${key} for ${this.cacheTTL / 1000}s`);
   }
 
   /**
@@ -142,7 +146,7 @@ class AvigilonService {
    */
   clearCache() {
     this.cache.clear();
-    console.log('Cache cleared');
+    logger.debug('Cache cleared');
   }
 
   /**
@@ -168,15 +172,26 @@ class AvigilonService {
   }
 
   /**
-   * Login to ACC server using POST /login
+   * Login to ACC server using POST /login.
+   * Deduplicated: concurrent callers share the same in-flight request.
    */
   async login() {
+    if (this._pendingLogin) {
+      return this._pendingLogin;
+    }
+    this._pendingLogin = this._doLogin().finally(() => {
+      this._pendingLogin = null;
+    });
+    return this._pendingLogin;
+  }
+
+  async _doLogin() {
     try {
       if (!this.axiosInstance) {
         this.initializeAxios();
       }
 
-      console.log('Logging in to ACC server:', this.baseURL);
+      logger.info('Logging in to ACC server:', this.baseURL);
 
       const authorizationToken = this.generateAuthorizationToken();
 
@@ -191,7 +206,7 @@ class AvigilonService {
         this.sessionToken = response.data.result.session;
         // Session expires after 1 hour of inactivity
         this.sessionExpiry = Date.now() + 60 * 60 * 1000;
-        console.log('Login successful, session obtained');
+        logger.info('Login successful, session obtained');
         return { success: true, message: 'Login successful' };
       }
 
@@ -215,7 +230,7 @@ class AvigilonService {
         await this.axiosInstance.post('/mt/api/rest/v1/logout', {
           session: this.sessionToken,
         });
-        console.log('Logout successful');
+        logger.info('Logout successful');
       }
     } catch (error) {
       console.warn('Logout error (non-critical):', error.message);
@@ -451,7 +466,7 @@ class AvigilonService {
       const response = await this.axiosInstance.get('/mt/api/rest/v1/server', {
         params: { ids: serverId }
       });
-      console.log(`Server ${serverId} details:`, JSON.stringify(response.data, null, 2).substring(0, 1000));
+      logger.debug(`Server ${serverId} details:`, JSON.stringify(response.data, null, 2).substring(0, 1000));
       return response.data;
     } catch (error) {
       console.error(`Failed to get server details for ${serverId}:`, error.message);
@@ -485,7 +500,7 @@ class AvigilonService {
       try {
         const response = await this.axiosInstance.get(endpoint.path, { params: endpoint.params });
         results[endpoint.name] = response.data;
-        console.log(`[${endpoint.name}] Success:`, JSON.stringify(response.data, null, 2));
+        logger.debug(`[${endpoint.name}] Success:`, JSON.stringify(response.data, null, 2));
       } catch (error) {
         results[endpoint.name] = { error: error.response?.status || error.message };
       }
@@ -508,7 +523,7 @@ class AvigilonService {
       const response = await this.axiosInstance.get('/mt/api/rest/v1/servers');
       // Log first server to see available fields
       if (response.data?.result?.servers?.[0]) {
-        console.log('Server data sample:', JSON.stringify(response.data.result.servers[0], null, 2));
+        logger.debug('Server data sample:', JSON.stringify(response.data.result.servers[0], null, 2));
       }
       this.setCache(cacheKey, response.data);
       return response.data;
@@ -528,7 +543,7 @@ class AvigilonService {
       const response = await this.axiosInstance.get('/mt/api/rest/v1/server/ids');
       // Log first server to see available fields
       if (response.data?.result?.servers?.[0]) {
-        console.log('ServerIds data sample:', JSON.stringify(response.data.result.servers[0], null, 2));
+        logger.debug('ServerIds data sample:', JSON.stringify(response.data.result.servers[0], null, 2));
       }
       return response.data;
     } catch (error) {
@@ -564,7 +579,7 @@ class AvigilonService {
         this.initializeAxios();
       }
       const response = await this.axiosInstance.get('/mt/api/rest/v1/health');
-      console.log('Health response:', JSON.stringify(response.data, null, 2));
+      logger.debug('Health response:', JSON.stringify(response.data, null, 2));
       return response.data;
     } catch (error) {
       console.error('Failed to get health:', error.message);
@@ -596,10 +611,10 @@ class AvigilonService {
         try {
           const params = siteId ? { id: siteId } : {};
           const response = await this.axiosInstance.get(endpoint, { params });
-          console.log(`Health data from ${endpoint}:`, JSON.stringify(response.data, null, 2));
+          logger.debug(`Health data from ${endpoint}:`, JSON.stringify(response.data, null, 2));
           return { endpoint, data: response.data };
         } catch (err) {
-          console.log(`Endpoint ${endpoint} failed:`, err.response?.status || err.message);
+          logger.debug(`Endpoint ${endpoint} failed:`, err.response?.status || err.message);
         }
       }
 
@@ -650,7 +665,7 @@ class AvigilonService {
     try {
       await this.ensureSession();
       const response = await this.axiosInstance.get('/mt/api/rest/v1/entities');
-      console.log('Entities response:', JSON.stringify(response.data, null, 2).substring(0, 2000));
+      logger.debug('Entities response:', JSON.stringify(response.data, null, 2).substring(0, 2000));
       return response.data;
     } catch (error) {
       console.error('Failed to get entities:', error.message);
@@ -666,7 +681,7 @@ class AvigilonService {
     try {
       await this.ensureSession();
       const response = await this.axiosInstance.get('/mt/api/rest/v1/event-subtopics');
-      console.log('Event subtopics:', JSON.stringify(response.data, null, 2).substring(0, 3000));
+      logger.debug('Event subtopics:', JSON.stringify(response.data, null, 2).substring(0, 3000));
       return response.data;
     } catch (error) {
       console.error('Failed to get event subtopics:', error.message);
@@ -801,11 +816,11 @@ class AvigilonService {
       const validResults = results.filter(r => r !== null);
       if (validResults.length > 0) {
         const maxDays = Math.max(...validResults);
-        console.log(`[${serverId}] Max recording days: ${maxDays} (sampled ${validResults.length} cameras)`);
+        logger.info(`[${serverId}] Max recording days: ${maxDays} (sampled ${validResults.length} cameras)`);
         return maxDays;
       }
 
-      console.log(`[${serverId}] No recording data found in timeline`);
+      logger.info(`[${serverId}] No recording data found in timeline`);
       return null;
     } catch (error) {
       console.error(`Failed to get max recording days for server ${serverId}:`, error.message);
@@ -837,11 +852,11 @@ class AvigilonService {
         this.initializeAxios();
       }
 
-      console.log('Testing connection to:', this.baseURL);
+      logger.info('Testing connection to:', this.baseURL);
 
       // First check health endpoint (no auth required)
       const healthResponse = await this.getHealth();
-      console.log('Health check passed:', healthResponse);
+      logger.info('Health check passed:', healthResponse);
 
       // Now try to login
       await this.login();

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Camera, Users, Cloud, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Camera, BarChart2, Users, Cloud, LogOut, Menu, X } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Cameras from './pages/Cameras';
+import CameraStats from './pages/CameraStats';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
 import CloudSettings from './pages/CloudSettings';
@@ -29,6 +30,7 @@ const Navigation = () => {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/cameras', label: 'Cameras', icon: Camera },
+    { path: '/camera-stats', label: 'Camera Stats', icon: BarChart2 },
     { path: '/cloud', label: 'Cloud', icon: Cloud },
   ];
 
@@ -149,6 +151,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <Cameras />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/camera-stats"
+            element={
+              <ProtectedRoute>
+                <CameraStats />
               </ProtectedRoute>
             }
           />

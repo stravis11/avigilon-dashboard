@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { logger } from '../utils/logger.js';
 
 class CloudApiService {
   constructor() {
@@ -14,9 +15,9 @@ class CloudApiService {
     this.cacheTTL = 300000; // 5 minutes for individual requests
     this.healthSummaryCacheTTL = 86400000; // 24 hours for health summary
 
-    console.log('CloudApiService initialized:');
-    console.log('- CLOUD_API_URL:', this.baseURL ? 'Set' : 'MISSING');
-    console.log('- CLOUD_SITE_ID:', this.siteId ? 'Set' : 'MISSING');
+    logger.info('CloudApiService initialized:');
+    logger.info('- CLOUD_API_URL:', this.baseURL ? 'Set' : 'MISSING');
+    logger.info('- CLOUD_SITE_ID:', this.siteId ? 'Set' : 'MISSING');
   }
 
   /**
@@ -46,7 +47,7 @@ class CloudApiService {
     // Re-initialize axios with new token
     this.initializeAxios();
 
-    console.log('Cloud JWT token set. Expires:', new Date(payload.exp * 1000).toISOString());
+    logger.info('Cloud JWT token set. Expires:', new Date(payload.exp * 1000).toISOString());
 
     // Eagerly fetch and cache health data while the token is still valid
     // (token expires in ~1 hour, but we cache health data for 24 hours)
@@ -64,10 +65,10 @@ class CloudApiService {
    * Called after a new token is set so data is captured before the token expires.
    */
   eagerFetchHealthData() {
-    console.log('Starting eager fetch of cloud health data...');
+    logger.info('Starting eager fetch of cloud health data...');
     this.getAllServerHealthSummary()
       .then((summary) => {
-        console.log(`Eager fetch complete: ${summary.length} servers cached for 24 hours`);
+        logger.info(`Eager fetch complete: ${summary.length} servers cached for 24 hours`);
       })
       .catch((err) => {
         console.error('Eager fetch failed:', err.message);
@@ -104,7 +105,7 @@ class CloudApiService {
     this.tokenPayload = null;
     this.tokenSetAt = null;
     this.clearCache();
-    console.log('Cloud JWT token cleared');
+    logger.info('Cloud JWT token cleared');
   }
 
   /**
@@ -165,7 +166,7 @@ class CloudApiService {
   getCached(key) {
     const cached = this.cache.get(key);
     if (cached && Date.now() < cached.expiry) {
-      console.log(`Cloud cache hit for ${key}`);
+      logger.debug(`Cloud cache hit for ${key}`);
       return cached.data;
     }
     if (cached) {
@@ -183,7 +184,7 @@ class CloudApiService {
       data,
       expiry: Date.now() + cacheTTL
     });
-    console.log(`Cloud cached ${key} for ${cacheTTL / 1000}s`);
+    logger.debug(`Cloud cached ${key} for ${cacheTTL / 1000}s`);
   }
 
   /**
@@ -191,7 +192,7 @@ class CloudApiService {
    */
   clearCache() {
     this.cache.clear();
-    console.log('Cloud cache cleared');
+    logger.debug('Cloud cache cleared');
   }
 
   /**
@@ -217,7 +218,7 @@ class CloudApiService {
       },
     });
 
-    console.log(`Cloud servers: fetched ${response.data?.servers?.length || 0} servers`);
+    logger.info(`Cloud servers: fetched ${response.data?.servers?.length || 0} servers`);
     this.setCache(cacheKey, response.data);
     return response.data;
   }
