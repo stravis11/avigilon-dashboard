@@ -51,6 +51,13 @@ import {
   triggerTokenRefresh,
 } from '../controllers/cloudController.js';
 
+import {
+  getZabbixStatus,
+  getZabbixServers,
+  getZabbixServerHealth,
+  generateZabbixImport,
+} from '../controllers/zabbixController.js';
+
 const router = express.Router();
 
 // Local health check (no ACC connection)
@@ -116,5 +123,11 @@ router.get('/cloud/servers', getCloudServers);
 router.get('/cloud/servers/:serverId', getCloudServerDetails);
 router.get('/cloud/health-summary', getCloudHealthSummary);
 router.post('/cloud/refresh-token', triggerTokenRefresh);
+
+// Zabbix (SNMP hardware details not covered by Cloud API)
+router.get('/zabbix/status', getZabbixStatus);
+router.get('/zabbix/servers', getZabbixServers);
+router.get('/zabbix/servers/:ipOrName', getZabbixServerHealth);
+router.post('/zabbix/missing-import', generateZabbixImport);
 
 export default router;

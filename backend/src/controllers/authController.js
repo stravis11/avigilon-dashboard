@@ -129,6 +129,70 @@ export const logout = async (req, res) => {
 };
 
 /**
+ * PUT /api/auth/profile
+ * Update current user's name and/or email
+ */
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    if (!name && !email) {
+      return res.status(400).json({ success: false, error: 'At least one field (name or email) is required' });
+    }
+
+    const updates = {};
+    if (name !== undefined) updates.name = name.trim();
+    if (email !== undefined) updates.email = email.trim().toLowerCase();
+
+    const updatedUser = await authService.updateUser(req.user.id, updates);
+    res.json({
+      success: true,
+      data: {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+      },
+    });
+  } catch (error) {
+    const status = error.message === 'Email already exists' ? 409 : 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * PUT /api/auth/profile/password
+ * Change current user's password (requires current password for verification)
+ */
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Current password and new password are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters' });
+    }
+
+    const user = await authService.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const isValid = await authService.verifyPassword(currentPassword, user.password);
+    if (!isValid) {
+      return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+    }
+
+    await authService.updateUser(req.user.id, { password: newPassword });
+    res.json({ success: true, data: { message: 'Password changed successfully' } });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
  * GET /api/auth/me
  * Get current authenticated user info
  */

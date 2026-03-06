@@ -138,6 +138,9 @@ app.use('/api', authenticateToken, apiRoutes);
 // Import service for cache pre-warming
 const { default: avigilonService } = await import('./services/avigilonServiceInstance.js');
 
+// Import Zabbix service (logs credential status on load)
+await import('./services/zabbixServiceInstance.js');
+
 // Pre-warm cache on startup
 const prewarmCache = async () => {
   logger.info('Pre-warming cache...');

@@ -51,6 +51,28 @@ const authService = {
     return response.data;
   },
 
+  // Self-service profile endpoints
+
+  /**
+   * Update current user's name and/or email
+   */
+  updateProfile: async (accessToken, data) => {
+    const response = await authClient.put('/profile', data, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return response.data;
+  },
+
+  /**
+   * Change current user's password
+   */
+  changePassword: async (accessToken, data) => {
+    const response = await authClient.put('/profile/password', data, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return response.data;
+  },
+
   // Admin endpoints
 
   /**

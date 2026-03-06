@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Camera, BarChart2, Users, Cloud, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Camera, BarChart2, Users, Cloud, LogOut, Menu, X, User, Settings, KeyRound, ChevronDown } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Cameras from './pages/Cameras';
 import CameraStats from './pages/CameraStats';
@@ -11,16 +11,31 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ThemeToggle from './components/ThemeToggle';
+import ProfileModal from './components/ProfileModal';
 
 const Navigation = () => {
   const location = useLocation();
   const { isAuthenticated, isAdmin, user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileModal, setProfileModal] = useState(null); // 'settings' | 'password'
+  const profileRef = useRef(null);
 
   // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
+
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Don't show navigation on login page or when not authenticated
   if (!isAuthenticated || location.pathname === '/login') {
@@ -39,95 +54,175 @@ const Navigation = () => {
     navItems.push({ path: '/users', label: 'Users', icon: Users });
   }
 
+  const openModal = (mode) => {
+    setProfileModal(mode);
+    setProfileOpen(false);
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          {/* Mobile branding */}
-          <div className="flex items-center md:hidden">
-            <LayoutDashboard className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            <span className="ml-2 font-semibold text-gray-900 dark:text-white">Avigilon</span>
-          </div>
-          {/* Desktop nav links */}
-          <div className="hidden md:flex space-x-8">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center space-x-2 py-4 px-3 border-b-2 transition-colors ${
-                    isActive
-                      ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
-                      : 'border-transparent text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-500'
-                  }`}
+    <>
+      <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            {/* Mobile branding */}
+            <div className="flex items-center md:hidden">
+              <LayoutDashboard className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <span className="ml-2 font-semibold text-gray-900 dark:text-white">Avigilon</span>
+            </div>
+            {/* Desktop nav links */}
+            <div className="hidden md:flex space-x-8">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center space-x-2 py-4 px-3 border-b-2 transition-colors ${
+                      isActive
+                        ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                        : 'border-transparent text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-500'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Profile dropdown — visible on sm and above */}
+              <div className="hidden sm:block relative" ref={profileRef}>
+                <button
+                  onClick={() => setProfileOpen(o => !o)}
+                  className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
-                  <Icon className="h-5 w-5" />
-                  <span className="font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600 dark:text-gray-300 hidden sm:inline">
-              {user?.name}
-              {isAdmin && (
-                <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(Admin)</span>
-              )}
-            </span>
-            <ThemeToggle />
-            <button
-              onClick={logout}
-              className="flex items-center space-x-1 p-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-              title="Logout"
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
-            {/* Hamburger menu button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              aria-label="Toggle navigation menu"
-            >
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-        </div>
-        {/* Mobile menu panel */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200 dark:border-gray-700 py-2">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center space-x-3 px-3 py-3 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
-            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 px-3 sm:hidden">
-              <span className="text-sm text-gray-600 dark:text-gray-300">
-                {user?.name}
-                {isAdmin && (
-                  <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">(Admin)</span>
+                  <User className="h-4 w-4 flex-shrink-0" />
+                  <span className="hidden md:inline font-medium">{user?.name || user?.username}</span>
+                  {isAdmin && (
+                    <span className="hidden md:inline text-xs text-purple-600 dark:text-purple-400">(Admin)</span>
+                  )}
+                  <ChevronDown className={`h-3 w-3 flex-shrink-0 transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {profileOpen && (
+                  <div className="absolute right-0 mt-1 w-52 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-30 overflow-hidden">
+                    {/* User info header */}
+                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user?.name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</div>
+                      {isAdmin && (
+                        <span className="inline-block mt-1 text-xs text-purple-600 dark:text-purple-400 font-medium">Administrator</span>
+                      )}
+                    </div>
+                    {/* Actions */}
+                    <button
+                      onClick={() => openModal('settings')}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <Settings className="h-4 w-4 text-gray-400" />
+                      Settings
+                    </button>
+                    <button
+                      onClick={() => openModal('password')}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <KeyRound className="h-4 w-4 text-gray-400" />
+                      Change Password
+                    </button>
+                    <div className="border-t border-gray-100 dark:border-gray-700">
+                      <button
+                        onClick={logout}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </span>
+              </div>
+
+              <ThemeToggle />
+
+              {/* Mobile-only logout button */}
+              <button
+                onClick={logout}
+                className="sm:hidden p-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Logout"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
+
+              {/* Hamburger menu button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Toggle navigation menu"
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
             </div>
           </div>
-        )}
-      </div>
-    </nav>
+
+          {/* Mobile menu panel */}
+          {mobileMenuOpen && (
+            <div className="md:hidden border-t border-gray-200 dark:border-gray-700 py-2">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center space-x-3 px-3 py-3 rounded-lg transition-colors ${
+                      isActive
+                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                );
+              })}
+              {/* Mobile profile section */}
+              <div className="mt-2 pt-3 border-t border-gray-200 dark:border-gray-700 px-3 space-y-1">
+                <div className="px-2 pb-2">
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">{user?.name}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</div>
+                </div>
+                <button
+                  onClick={() => openModal('settings')}
+                  className="flex items-center gap-3 w-full px-2 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <Settings className="h-4 w-4 text-gray-400" />
+                  Settings
+                </button>
+                <button
+                  onClick={() => openModal('password')}
+                  className="flex items-center gap-3 w-full px-2 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <KeyRound className="h-4 w-4 text-gray-400" />
+                  Change Password
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      {/* Profile modals (rendered outside nav so they're full-screen overlays) */}
+      {profileModal && (
+        <ProfileModal
+          mode={profileModal}
+          onClose={() => setProfileModal(null)}
+        />
+      )}
+    </>
   );
 };
 

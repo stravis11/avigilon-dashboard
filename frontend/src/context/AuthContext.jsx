@@ -122,6 +122,10 @@ export const AuthProvider = ({ children }) => {
 
   const isAdmin = user?.role === 'admin';
 
+  const updateUser = useCallback((updatedFields) => {
+    setUser(prev => prev ? { ...prev, ...updatedFields } : prev);
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -133,7 +137,8 @@ export const AuthProvider = ({ children }) => {
       login,
       logout,
       refreshAccessToken,
-      clearAuth
+      clearAuth,
+      updateUser,
     }}>
       {children}
     </AuthContext.Provider>

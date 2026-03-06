@@ -1,8 +1,63 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw, Cloud, Thermometer, HardDrive, Cpu, Zap } from 'lucide-react';
+import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw, Cloud, Thermometer, HardDrive, Cpu, Zap, Wind, Database } from 'lucide-react';
 import apiService from '../services/apiService';
 
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
+
+// ---------------------------------------------------------------------------
+// Zabbix / Dell iDRAC status helpers
+// ---------------------------------------------------------------------------
+
+// Dell globalSystemStatus / component status codes
+const DELL_STATUS = { '1': 'Unknown', '2': 'OK', '3': 'OK', '4': 'Warning', '5': 'Critical', '6': 'Non-Recoverable' };
+const dellStatusLabel = (val) => DELL_STATUS[String(val)] ?? String(val);
+const dellStatusColor = (val) => {
+  const s = String(val);
+  if (s === '2' || s === '3') return 'text-green-600 dark:text-green-400';
+  if (s === '4') return 'text-yellow-600 dark:text-yellow-400';
+  if (s === '5' || s === '6') return 'text-red-600 dark:text-red-400';
+  return 'text-gray-500 dark:text-gray-400';
+};
+
+// Virtual disk state codes (Dell RAID)
+const VDISK_STATUS = { '1': 'Unknown', '2': 'Online', '3': 'Failed', '4': 'Degraded', '15': 'Ready' };
+const virtualDiskLabel = (val) => VDISK_STATUS[String(val)] ?? `State ${val}`;
+const virtualDiskColor = (val) => {
+  const s = String(val);
+  if (s === '2') return 'text-green-600 dark:text-green-400';
+  if (s === '4' || s === '15') return 'text-yellow-600 dark:text-yellow-400';
+  return 'text-red-600 dark:text-red-400';
+};
+
+// Media type
+const mediaTypeLabel = (val) => ({ '2': 'HDD', '3': 'SSD', '4': 'NVMe' }[String(val)] ?? 'Disk');
+
+// Disk size in human-readable SI units (matches drive label conventions)
+const formatDiskSize = (bytes) => {
+  const b = parseInt(bytes);
+  if (!b) return null;
+  if (b >= 1e12) return `${(b / 1e12).toFixed(0)} TB`;
+  if (b >= 1e9)  return `${(b / 1e9).toFixed(0)} GB`;
+  return `${(b / 1e6).toFixed(0)} MB`;
+};
+
+// DIMM size in binary GiB (matches JEDEC standard)
+const formatDimmSize = (bytes) => {
+  const b = parseInt(bytes);
+  if (!b) return null;
+  return `${Math.round(b / (1024 ** 3))} GB`;
+};
+
+// Hardware uptime in days/hours
+const formatUptime = (seconds) => {
+  if (!seconds) return null;
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+};
 
 const Dashboard = () => {
   const [serverInfo, setServerInfo] = useState(null);
@@ -18,11 +73,32 @@ const Dashboard = () => {
   const [loadingMessage, setLoadingMessage] = useState('');
   const [cloudStatus, setCloudStatus] = useState(null);
   const [cloudHealthData, setCloudHealthData] = useState(null);
+  const [zabbixData, setZabbixData] = useState(null);
+  const [zabbixLoading, setZabbixLoading] = useState(false);
 
   // Load data on mount - simple approach, let apiClient handle auth
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // Fetch Zabbix SNMP data whenever a server is selected
+  useEffect(() => {
+    if (!selectedServer) {
+      setZabbixData(null);
+      return;
+    }
+    const ip = selectedServer.host || selectedServer.address || selectedServer.ip;
+    if (!ip) {
+      setZabbixData(null);
+      return;
+    }
+    setZabbixLoading(true);
+    setZabbixData(null);
+    apiService.getZabbixServerHealth(ip)
+      .then((response) => setZabbixData(response?.data || response))
+      .catch(() => setZabbixData(null))
+      .finally(() => setZabbixLoading(false));
+  }, [selectedServer]);
 
   const loadDashboardData = useCallback(async () => {
     setSitesLoading(true);
@@ -120,7 +196,6 @@ const Dashboard = () => {
     }
   };
 
-  // Handle column sort
   const handleSort = (column) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -206,7 +281,7 @@ const Dashboard = () => {
   };
 
   // Server Detail Modal Component
-  const ServerDetailModal = ({ server, cloudHealth, onClose }) => {
+  const ServerDetailModal = ({ server, cloudHealth, zabbixHealth, zabbixLoading, onClose }) => {
     if (!server) return null;
 
     return (
@@ -507,6 +582,175 @@ const Dashboard = () => {
                     <a href="/cloud" className="ml-1 text-blue-600 dark:text-blue-400 hover:underline">Set up Cloud connection</a>
                   </div>
                 )}
+
+                {/* ── Zabbix SNMP Hardware ── */}
+                <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+                    <Database className="h-4 w-4 mr-1.5 text-orange-500" />
+                    SNMP Hardware
+                    {zabbixLoading && (
+                      <span className="ml-2 flex items-center space-x-1 text-orange-500 font-normal">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-orange-500"></div>
+                        <span className="text-xs">Loading...</span>
+                      </span>
+                    )}
+                  </h3>
+
+                  {zabbixLoading ? null
+                  : zabbixHealth?.available && zabbixHealth?.data && (
+                      zabbixHealth.data.os || zabbixHealth.data.bios || zabbixHealth.data.idracFirmware ||
+                      zabbixHealth.data.uptimeSeconds != null || zabbixHealth.data.overallHealth ||
+                      zabbixHealth.data.fans?.length || zabbixHealth.data.dimms?.length ||
+                      zabbixHealth.data.physicalDisks?.length || zabbixHealth.data.raidControllers?.length
+                    ) ? (
+                    <div className="space-y-3">
+                      {/* System Info */}
+                      {(zabbixHealth.data.os || zabbixHealth.data.bios || zabbixHealth.data.idracFirmware || zabbixHealth.data.uptimeSeconds || zabbixHealth.data.overallHealth) && (
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <dl className="space-y-1.5">
+                            {zabbixHealth.data.os && (
+                              <div className="flex justify-between">
+                                <dt className="text-xs text-gray-500 dark:text-gray-400">OS</dt>
+                                <dd className="text-xs font-medium text-gray-900 dark:text-white text-right max-w-[65%]">{zabbixHealth.data.os}</dd>
+                              </div>
+                            )}
+                            {zabbixHealth.data.bios && (
+                              <div className="flex justify-between">
+                                <dt className="text-xs text-gray-500 dark:text-gray-400">BIOS</dt>
+                                <dd className="text-xs font-medium text-gray-900 dark:text-white">{zabbixHealth.data.bios}</dd>
+                              </div>
+                            )}
+                            {zabbixHealth.data.idracFirmware && (
+                              <div className="flex justify-between">
+                                <dt className="text-xs text-gray-500 dark:text-gray-400">iDRAC Firmware</dt>
+                                <dd className="text-xs font-medium text-gray-900 dark:text-white">{zabbixHealth.data.idracFirmware}</dd>
+                              </div>
+                            )}
+                            {zabbixHealth.data.uptimeSeconds != null && (
+                              <div className="flex justify-between">
+                                <dt className="text-xs text-gray-500 dark:text-gray-400">HW Uptime</dt>
+                                <dd className="text-xs font-medium text-gray-900 dark:text-white">{formatUptime(zabbixHealth.data.uptimeSeconds)}</dd>
+                              </div>
+                            )}
+                            {zabbixHealth.data.overallHealth && (
+                              <div className="flex justify-between">
+                                <dt className="text-xs text-gray-500 dark:text-gray-400">Overall Health</dt>
+                                <dd className={`text-xs font-semibold ${dellStatusColor(zabbixHealth.data.overallHealth)}`}>
+                                  {dellStatusLabel(zabbixHealth.data.overallHealth)}
+                                </dd>
+                              </div>
+                            )}
+                          </dl>
+                        </div>
+                      )}
+
+                      {/* DIMMs */}
+                      {zabbixHealth.data.dimms?.length > 0 && (
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center">
+                            <Cpu className="h-3 w-3 mr-1" />
+                            Memory DIMMs
+                          </h4>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                            {zabbixHealth.data.dimms.map((dimm, i) => (
+                              <div key={i} className="flex justify-between items-center py-0.5">
+                                <span className="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">{dimm.slot}</span>
+                                <span className="text-xs ml-1 flex-shrink-0">
+                                  {dimm.sizeBytes && <span className="text-gray-700 dark:text-gray-300 mr-1">{formatDimmSize(dimm.sizeBytes)}</span>}
+                                  <span className={dellStatusColor(dimm.status)}>{dellStatusLabel(dimm.status)}</span>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Fans */}
+                      {zabbixHealth.data.fans?.length > 0 && (
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center">
+                            <Wind className="h-3 w-3 mr-1" />
+                            Fans
+                          </h4>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                            {zabbixHealth.data.fans.map((fan, i) => (
+                              <div key={i} className="flex justify-between items-center py-0.5">
+                                <span className="text-xs text-gray-600 dark:text-gray-400 truncate">{fan.name}</span>
+                                <span className="text-xs font-medium text-gray-900 dark:text-white ml-1 flex-shrink-0">
+                                  {parseInt(fan.rpm).toLocaleString()} RPM
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* RAID Controllers & Virtual Disks */}
+                      {(zabbixHealth.data.raidControllers?.length > 0 || zabbixHealth.data.virtualDisks?.length > 0) && (
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center">
+                            <HardDrive className="h-3 w-3 mr-1" />
+                            RAID
+                          </h4>
+                          <dl className="space-y-1.5">
+                            {zabbixHealth.data.raidControllers?.map((ctrl, i) => (
+                              <div key={i} className="flex justify-between items-center">
+                                <dt className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[65%]">{ctrl.name}</dt>
+                                <dd className={`text-xs font-medium flex-shrink-0 ${dellStatusColor(ctrl.status)}`}>{dellStatusLabel(ctrl.status)}</dd>
+                              </div>
+                            ))}
+                            {zabbixHealth.data.virtualDisks?.map((vd, i) => (
+                              <div key={i} className="flex justify-between items-center">
+                                <dt className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[65%]">
+                                  <span className="text-gray-400">Vol: </span>{vd.name}
+                                </dt>
+                                <dd className={`text-xs font-medium flex-shrink-0 ${virtualDiskColor(vd.status)}`}>{virtualDiskLabel(vd.status)}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                      )}
+
+                      {/* Physical Disks */}
+                      {zabbixHealth.data.physicalDisks?.length > 0 && (
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center">
+                            <HardDrive className="h-3 w-3 mr-1" />
+                            Physical Disks ({zabbixHealth.data.physicalDisks.length})
+                          </h4>
+                          <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                            {zabbixHealth.data.physicalDisks.map((disk, i) => (
+                              <div key={i} className="flex items-center justify-between text-xs py-0.5 border-b border-gray-200 dark:border-gray-600 last:border-0">
+                                <div className="flex-1 min-w-0 mr-2">
+                                  <span className="font-medium text-gray-800 dark:text-gray-200">{disk.label}</span>
+                                  <span className="text-gray-400 ml-1.5">
+                                    {mediaTypeLabel(disk.mediaType)}
+                                    {disk.sizeBytes && ` · ${formatDiskSize(disk.sizeBytes)}`}
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-1.5 flex-shrink-0">
+                                  <span className={dellStatusColor(disk.status)}>{dellStatusLabel(disk.status)}</span>
+                                  {disk.smartStatus === '1' && (
+                                    <span className="text-yellow-600 dark:text-yellow-400 font-bold" title="S.M.A.R.T. alert">SMART!</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                  ) : zabbixHealth?.available && zabbixHealth?.data ? (
+                    <p className="text-xs text-orange-500 dark:text-orange-400">Server is monitored in Zabbix — SNMP data collection in progress.</p>
+                  ) : zabbixHealth?.available === false && zabbixHealth?.reason === 'not_in_zabbix' ? (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Not yet added to Zabbix monitoring.</p>
+                  ) : zabbixHealth?.available && !zabbixHealth?.snmpAvailable ? (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400">In Zabbix but SNMP not yet available.</p>
+                  ) : !zabbixLoading && zabbixHealth === null ? (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">No IP address available to query Zabbix.</p>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
@@ -749,10 +993,12 @@ const Dashboard = () => {
         {/* Servers List */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 mb-8 transition-colors duration-300">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-              <Server className="h-5 w-5 mr-2" />
-              Servers
-            </h2>
+            <div className="flex items-center justify-between flex-wrap gap-y-2">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+                <Server className="h-5 w-5 mr-2" />
+                Servers
+              </h2>
+            </div>
           </div>
           <div className="overflow-x-auto">
             {statsLoading ? (
@@ -826,6 +1072,8 @@ const Dashboard = () => {
         <ServerDetailModal
           server={selectedServer}
           cloudHealth={getCloudHealthForServer(selectedServer.name)}
+          zabbixHealth={zabbixData}
+          zabbixLoading={zabbixLoading}
           onClose={() => setSelectedServer(null)}
         />
       )}

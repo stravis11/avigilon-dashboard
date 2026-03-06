@@ -108,6 +108,10 @@ const apiService = {
   getCloudServerDetails: (serverId) => apiClient.get(`/cloud/servers/${serverId}`),
   getCloudHealthSummary: () => apiClient.get('/cloud/health-summary'),
   refreshCloudToken: () => apiClient.post('/cloud/refresh-token'),
+
+  // Zabbix (SNMP hardware details — OS, BIOS, iDRAC, DIMMs, fans, disks)
+  getZabbixStatus: () => apiClient.get('/zabbix/status'),
+  getZabbixServerHealth: (ipOrName) => apiClient.get(`/zabbix/servers/${encodeURIComponent(ipOrName)}`),
 };
 
 export default apiService;

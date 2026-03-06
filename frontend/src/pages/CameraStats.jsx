@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BarChart2, RefreshCw, AlertCircle, X, ChevronRight, Download, FileText, Sheet } from 'lucide-react';
+import { BarChart2, RefreshCw, AlertCircle, X, ChevronRight, Download, FileText, Sheet, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import apiService from '../services/apiService';
 import { exportCSV, exportPDF } from '../utils/exportReport';
 
@@ -50,6 +50,9 @@ const CameraStats = () => {
   const [exporting, setExporting] = useState(false);
   const exportRef = useRef(null);
 
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
+
   useEffect(() => { loadData(); }, []);
 
   // Close export dropdown when clicking outside
@@ -58,6 +61,9 @@ const CameraStats = () => {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Reset sort when detail view changes
+  useEffect(() => { setSortCol(null); setSortDir('asc'); }, [offlineOpen, selectedModel]);
 
   const handleExport = async (format) => {
     setExportOpen(false);
@@ -234,6 +240,44 @@ const CameraStats = () => {
   const closeDetail = () => {
     setOfflineOpen(false);
     setSelectedModel(null);
+  };
+
+  // ── Sorting ───────────────────────────────────────────────────────────────────
+
+  const compareIp = (a, b) => {
+    const parse = ip => ip.split('.').map(n => parseInt(n, 10) || 0);
+    const ap = parse(a); const bp = parse(b);
+    for (let i = 0; i < 4; i++) { if (ap[i] !== bp[i]) return ap[i] - bp[i]; }
+    return 0;
+  };
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('asc'); }
+  };
+
+  const sortedDetailCameras = [...detailCameras].sort((a, b) => {
+    if (!sortCol) return 0;
+    let cmp = 0;
+    if (sortCol === 'name') {
+      cmp = (a.name || a.deviceName || 'Unnamed').localeCompare(b.name || b.deviceName || 'Unnamed');
+    } else if (sortCol === 'status') {
+      cmp = (a.connectionState || 'Unknown').localeCompare(b.connectionState || 'Unknown');
+    } else if (sortCol === 'ip') {
+      cmp = compareIp(getIpAddress(a), getIpAddress(b));
+    } else if (sortCol === 'model') {
+      cmp = (a.model || a.deviceModel || 'N/A').localeCompare(b.model || b.deviceModel || 'N/A');
+    } else if (sortCol === 'server') {
+      cmp = getServerName(a.serverId).localeCompare(getServerName(b.serverId));
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const SortIcon = ({ col }) => {
+    if (sortCol !== col) return <ArrowUpDown className="h-3.5 w-3.5 ml-1 opacity-60" />;
+    return sortDir === 'asc'
+      ? <ArrowUp className="h-3.5 w-3.5 ml-1 text-blue-400" />
+      : <ArrowDown className="h-3.5 w-3.5 ml-1 text-blue-400" />;
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -577,15 +621,28 @@ const CameraStats = () => {
                   <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">IP Address</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">Model</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">Server</th>
+                        {[
+                          { col: 'name',   label: 'Name',       cls: '' },
+                          { col: 'status', label: 'Status',     cls: '' },
+                          { col: 'ip',     label: 'IP Address', cls: 'hidden sm:table-cell' },
+                          { col: 'model',  label: 'Model',      cls: 'hidden md:table-cell' },
+                          { col: 'server', label: 'Server',     cls: 'hidden lg:table-cell' },
+                        ].map(({ col, label, cls }) => (
+                          <th
+                            key={col}
+                            onClick={() => handleSort(col)}
+                            className={`px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 ${cls}`}
+                          >
+                            <span className="inline-flex items-center">
+                              {label}
+                              <SortIcon col={col} />
+                            </span>
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                      {detailCameras.map(camera => (
+                      {sortedDetailCameras.map(camera => (
                         <tr key={camera.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
                             {camera.name || camera.deviceName || 'Unnamed'}

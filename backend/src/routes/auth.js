@@ -1,5 +1,5 @@
 import express from 'express';
-import { login, refreshToken, logout, getCurrentUser } from '../controllers/authController.js';
+import { login, refreshToken, logout, getCurrentUser, updateProfile, changePassword } from '../controllers/authController.js';
 import { getUsers, createUser, updateUser, deleteUser } from '../controllers/userController.js';
 import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
@@ -12,6 +12,10 @@ router.post('/refresh', refreshToken);
 // Protected routes (auth required)
 router.post('/logout', authenticateToken, logout);
 router.get('/me', authenticateToken, getCurrentUser);
+
+// Self-service profile routes (any authenticated user)
+router.put('/profile', authenticateToken, updateProfile);
+router.put('/profile/password', authenticateToken, changePassword);
 
 // Admin-only routes
 router.get('/users', authenticateToken, requireAdmin, getUsers);
