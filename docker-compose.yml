@@ -23,7 +23,10 @@ services:
     build: ./frontend
     container_name: avigilon-frontend
     ports:
-      - "3000:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - backend
     restart: unless-stopped
