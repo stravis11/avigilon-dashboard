@@ -43,6 +43,7 @@ const CameraStats = () => {
   const [offlineCount, setOfflineCount] = useState(0);
   const [migratedCount, setMigratedCount] = useState(0);
   const [connectedIps, setConnectedIps] = useState(new Set());
+  const [connectedNames, setConnectedNames] = useState(new Set());
 
   const [offlineOpen, setOfflineOpen] = useState(false);
   const [selectedMfr, setSelectedMfr] = useState(null);   // expanded manufacturer
@@ -109,16 +110,28 @@ const CameraStats = () => {
         .map(s => s.id);
       const all = extractArray(camerasResponse, 'cameras');
       const active = all.filter(c => !standbyIds.includes(c.serverId));
+      const connectedCameras = active.filter(c => c.connectionState === 'CONNECTED');
       const ips = new Set(
-        active
-          .filter(c => c.connectionState === 'CONNECTED')
+        connectedCameras
           .map(c => getIpAddress(c))
           .filter(ip => ip && ip !== 'N/A')
       );
+      const names = new Set(
+        connectedCameras
+          .map(c => (c.name || c.deviceName || '').trim())
+          .filter(Boolean)
+      );
+      const isMigratedCamera = (c) => {
+        const ip = getIpAddress(c);
+        if (ip && ip !== 'N/A') return ips.has(ip);
+        const name = (c.name || c.deviceName || '').trim();
+        return name ? names.has(name) : false;
+      };
       const disconnected = active.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
-      const migrated = disconnected.filter(c => ips.has(getIpAddress(c)));
-      const offline = disconnected.filter(c => !ips.has(getIpAddress(c)));
+      const migrated = disconnected.filter(isMigratedCamera);
+      const offline = disconnected.filter(c => !isMigratedCamera(c));
       setConnectedIps(ips);
+      setConnectedNames(names);
       setFilteredCount(active.length);
       setOfflineCount(offline.length);
       setMigratedCount(migrated.length);
@@ -144,6 +157,14 @@ const CameraStats = () => {
     : onlinePercent >= 80
     ? { text: 'text-yellow-600 dark:text-yellow-400', bar: '#eab308', border: 'border-yellow-200 dark:border-yellow-800' }
     : { text: 'text-red-600 dark:text-red-400', bar: '#ef4444', border: 'border-red-200 dark:border-red-800' };
+
+  const isMigrated = (c) => {
+    if (c.connectionState === 'CONNECTED') return false;
+    const ip = getIpAddress(c);
+    if (ip && ip !== 'N/A') return connectedIps.has(ip);
+    const name = (c.name || c.deviceName || '').trim();
+    return name ? connectedNames.has(name) : false;
+  };
 
   // Unique physical devices (grouped by IP, fall back to camera ID)
   const totalDevices = new Set(cameras.map(deviceKey)).size;
@@ -205,7 +226,7 @@ const CameraStats = () => {
   let detailTitle = '';
   let detailDotColor = null;
   if (offlineOpen) {
-    detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED' && !connectedIps.has(getIpAddress(c)));
+    detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED' && !isMigrated(c));
     detailTitle = 'Offline Cameras';
     detailDotColor = '#ef4444';
   } else if (selectedMfr && selectedModel) {
@@ -673,16 +694,16 @@ const CameraStats = () => {
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {(() => {
-                              const isMigrated = camera.connectionState !== 'CONNECTED' && connectedIps.has(getIpAddress(camera));
+                              const isMigratedCam = isMigrated(camera);
                               return (
                                 <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
                                   camera.connectionState === 'CONNECTED'
                                     ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-400'
-                                    : isMigrated
+                                    : isMigratedCam
                                     ? 'bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-400'
                                     : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-400'
                                 }`}>
-                                  {isMigrated ? 'MIGRATED' : (camera.connectionState || 'Unknown')}
+                                  {isMigratedCam ? 'MIGRATED' : (camera.connectionState || 'Unknown')}
                                 </span>
                               );
                             })()}
