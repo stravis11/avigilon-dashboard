@@ -46,6 +46,7 @@ const CameraStats = () => {
   const [connectedNames, setConnectedNames] = useState(new Set());
 
   const [offlineOpen, setOfflineOpen] = useState(false);
+  const [migratedOpen, setMigratedOpen] = useState(false);
   const [selectedMfr, setSelectedMfr] = useState(null);   // expanded manufacturer
   const [selectedGen, setSelectedGen] = useState(null);   // Avigilon generation (H4/H5/H6/Other)
   const [selectedModel, setSelectedModel] = useState(null); // selected model within mfr/gen
@@ -66,7 +67,7 @@ const CameraStats = () => {
   }, []);
 
   // Reset sort when detail view changes
-  useEffect(() => { setSortCol(null); setSortDir('asc'); }, [offlineOpen, selectedModel]);
+  useEffect(() => { setSortCol(null); setSortDir('asc'); }, [offlineOpen, migratedOpen, selectedModel]);
 
   const handleExport = async (format) => {
     setExportOpen(false);
@@ -150,8 +151,9 @@ const CameraStats = () => {
 
   // ── Derived stats ────────────────────────────────────────────────────────────
 
-  const onlineCount = filteredCount - offlineCount - migratedCount;
-  const onlinePercent = filteredCount > 0 ? Math.round((onlineCount / filteredCount) * 100) : 0;
+  const activeCount = filteredCount - migratedCount;
+  const onlineCount = activeCount - offlineCount;
+  const onlinePercent = activeCount > 0 ? Math.round((onlineCount / activeCount) * 100) : 0;
   const onlineColor = onlinePercent >= 95
     ? { text: 'text-green-600 dark:text-green-400', bar: '#22c55e', border: 'border-green-200 dark:border-green-800' }
     : onlinePercent >= 80
@@ -166,9 +168,10 @@ const CameraStats = () => {
     return name ? connectedNames.has(name) : false;
   };
 
-  // Unique physical devices (grouped by IP, fall back to camera ID)
-  const totalDevices = new Set(cameras.map(deviceKey)).size;
-  const onlineDevices = new Set(cameras.filter(c => c.connectionState === 'CONNECTED').map(deviceKey)).size;
+  // Unique physical devices (grouped by IP, fall back to camera ID) — exclude migrated
+  const nonMigratedCameras = cameras.filter(c => !isMigrated(c));
+  const totalDevices = new Set(nonMigratedCameras.map(deviceKey)).size;
+  const onlineDevices = new Set(nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED').map(deviceKey)).size;
   const devicePercent = totalDevices > 0 ? Math.round((onlineDevices / totalDevices) * 100) : 0;
   const deviceColor = devicePercent >= 95
     ? { text: 'text-green-600 dark:text-green-400', bar: '#22c55e', border: 'border-green-200 dark:border-green-800' }
@@ -229,6 +232,10 @@ const CameraStats = () => {
     detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED' && !isMigrated(c));
     detailTitle = 'Offline Cameras';
     detailDotColor = '#ef4444';
+  } else if (migratedOpen) {
+    detailCameras = cameras.filter(c => isMigrated(c));
+    detailTitle = 'Migrated (Stale) Cameras';
+    detailDotColor = '#f97316';
   } else if (selectedMfr && selectedModel) {
     detailCameras = mfrCameras.filter(c => (c.model || c.deviceModel || 'Unknown') === selectedModel);
     detailTitle = `${selectedModel}`;
@@ -242,6 +249,18 @@ const CameraStats = () => {
     const opening = !offlineOpen;
     setOfflineOpen(opening);
     if (opening) {
+      setMigratedOpen(false);
+      setSelectedMfr(null);
+      setSelectedGen(null);
+      setSelectedModel(null);
+    }
+  };
+
+  const handleMigratedClick = () => {
+    const opening = !migratedOpen;
+    setMigratedOpen(opening);
+    if (opening) {
+      setOfflineOpen(false);
       setSelectedMfr(null);
       setSelectedGen(null);
       setSelectedModel(null);
@@ -258,6 +277,7 @@ const CameraStats = () => {
       setSelectedGen(null);
       setSelectedModel(null);
       setOfflineOpen(false);
+      setMigratedOpen(false);
     }
   };
 
@@ -272,6 +292,7 @@ const CameraStats = () => {
 
   const closeDetail = () => {
     setOfflineOpen(false);
+    setMigratedOpen(false);
     setSelectedModel(null);
   };
 
@@ -451,14 +472,23 @@ const CameraStats = () => {
 
               {/* Cameras Migrated (stale entries on old server) */}
               {migratedCount > 0 && (
-                <div className="flex flex-col gap-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4">
+                <button
+                  onClick={handleMigratedClick}
+                  className={`flex flex-col gap-1.5 bg-white dark:bg-gray-800 border rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4 text-left transition-all ${
+                    migratedOpen
+                      ? 'border-orange-400 dark:border-orange-500 ring-2 ring-orange-300 dark:ring-orange-700'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700'
+                  }`}
+                >
                   <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Migrated (Stale)</span>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold text-orange-500 dark:text-orange-400">{migratedCount}</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">moved to another server</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">moved to another server · click to view</span>
                   </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">Disconnected on old server but online elsewhere</p>
-                </div>
+                  <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-orange-500" style={{ width: `${Math.round((migratedCount / filteredCount) * 100)}%` }} />
+                  </div>
+                </button>
               )}
             </div>
 
