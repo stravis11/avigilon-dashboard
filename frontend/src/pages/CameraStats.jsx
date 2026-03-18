@@ -677,7 +677,7 @@ const CameraStats = () => {
             )}
 
             {/* ── Camera detail table ────────────────────────────────────────── */}
-            {(offlineOpen || selectedModel) && detailCameras.length > 0 && (
+            {(offlineOpen || migratedOpen || selectedModel) && detailCameras.length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-2">
