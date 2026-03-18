@@ -41,6 +41,8 @@ const CameraStats = () => {
   const [error, setError] = useState(null);
   const [filteredCount, setFilteredCount] = useState(0);
   const [offlineCount, setOfflineCount] = useState(0);
+  const [migratedCount, setMigratedCount] = useState(0);
+  const [connectedIps, setConnectedIps] = useState(new Set());
 
   const [offlineOpen, setOfflineOpen] = useState(false);
   const [selectedMfr, setSelectedMfr] = useState(null);   // expanded manufacturer
@@ -107,9 +109,19 @@ const CameraStats = () => {
         .map(s => s.id);
       const all = extractArray(camerasResponse, 'cameras');
       const active = all.filter(c => !standbyIds.includes(c.serverId));
-      const offline = active.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+      const ips = new Set(
+        active
+          .filter(c => c.connectionState === 'CONNECTED')
+          .map(c => getIpAddress(c))
+          .filter(ip => ip && ip !== 'N/A')
+      );
+      const disconnected = active.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+      const migrated = disconnected.filter(c => ips.has(getIpAddress(c)));
+      const offline = disconnected.filter(c => !ips.has(getIpAddress(c)));
+      setConnectedIps(ips);
       setFilteredCount(active.length);
       setOfflineCount(offline.length);
+      setMigratedCount(migrated.length);
       setCameras(active);
     } catch (err) {
       setError(err.message);
@@ -125,7 +137,7 @@ const CameraStats = () => {
 
   // ── Derived stats ────────────────────────────────────────────────────────────
 
-  const onlineCount = filteredCount - offlineCount;
+  const onlineCount = filteredCount - offlineCount - migratedCount;
   const onlinePercent = filteredCount > 0 ? Math.round((onlineCount / filteredCount) * 100) : 0;
   const onlineColor = onlinePercent >= 95
     ? { text: 'text-green-600 dark:text-green-400', bar: '#22c55e', border: 'border-green-200 dark:border-green-800' }
@@ -193,7 +205,7 @@ const CameraStats = () => {
   let detailTitle = '';
   let detailDotColor = null;
   if (offlineOpen) {
-    detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+    detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED' && !connectedIps.has(getIpAddress(c)));
     detailTitle = 'Offline Cameras';
     detailDotColor = '#ef4444';
   } else if (selectedMfr && selectedModel) {
@@ -415,6 +427,18 @@ const CameraStats = () => {
                   <div className="h-full rounded-full bg-red-500" style={{ width: `${Math.round((offlineCount / filteredCount) * 100)}%` }} />
                 </div>
               </button>
+
+              {/* Cameras Migrated (stale entries on old server) */}
+              {migratedCount > 0 && (
+                <div className="flex flex-col gap-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Migrated (Stale)</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-orange-500 dark:text-orange-400">{migratedCount}</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">moved to another server</span>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Disconnected on old server but online elsewhere</p>
+                </div>
+              )}
             </div>
 
             {/* ── By Manufacturer ────────────────────────────────────────────── */}
@@ -648,13 +672,20 @@ const CameraStats = () => {
                             {camera.name || camera.deviceName || 'Unnamed'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                              camera.connectionState === 'CONNECTED'
-                                ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-400'
-                                : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-400'
-                            }`}>
-                              {camera.connectionState || 'Unknown'}
-                            </span>
+                            {(() => {
+                              const isMigrated = camera.connectionState !== 'CONNECTED' && connectedIps.has(getIpAddress(camera));
+                              return (
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  camera.connectionState === 'CONNECTED'
+                                    ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-400'
+                                    : isMigrated
+                                    ? 'bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-400'
+                                    : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-400'
+                                }`}>
+                                  {isMigrated ? 'MIGRATED' : (camera.connectionState || 'Unknown')}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono hidden sm:table-cell">
                             {getIpAddress(camera)}
