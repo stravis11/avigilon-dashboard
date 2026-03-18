@@ -47,6 +47,8 @@ const CameraStats = () => {
 
   const [offlineOpen, setOfflineOpen] = useState(false);
   const [migratedOpen, setMigratedOpen] = useState(false);
+  const [devicesOnlineOpen, setDevicesOnlineOpen] = useState(false);
+  const [viewsOnlineOpen, setViewsOnlineOpen] = useState(false);
   const [selectedMfr, setSelectedMfr] = useState(null);   // expanded manufacturer
   const [selectedGen, setSelectedGen] = useState(null);   // Avigilon generation (H4/H5/H6/Other)
   const [selectedModel, setSelectedModel] = useState(null); // selected model within mfr/gen
@@ -67,7 +69,7 @@ const CameraStats = () => {
   }, []);
 
   // Reset sort when detail view changes
-  useEffect(() => { setSortCol(null); setSortDir('asc'); }, [offlineOpen, migratedOpen, selectedModel]);
+  useEffect(() => { setSortCol(null); setSortDir('asc'); }, [offlineOpen, migratedOpen, devicesOnlineOpen, viewsOnlineOpen, selectedModel]);
 
   const handleExport = async (format) => {
     setExportOpen(false);
@@ -228,7 +230,22 @@ const CameraStats = () => {
   let detailCameras = [];
   let detailTitle = '';
   let detailDotColor = null;
-  if (offlineOpen) {
+  if (viewsOnlineOpen) {
+    detailCameras = nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED');
+    detailTitle = 'Camera Views Online';
+    detailDotColor = onlineColor.bar;
+  } else if (devicesOnlineOpen) {
+    const seen = new Set();
+    detailCameras = nonMigratedCameras.filter(c => {
+      if (c.connectionState !== 'CONNECTED') return false;
+      const key = deviceKey(c);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    detailTitle = 'Camera Devices Online';
+    detailDotColor = deviceColor.bar;
+  } else if (offlineOpen) {
     detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED' && !isMigrated(c));
     detailTitle = 'Offline Cameras';
     detailDotColor = '#ef4444';
@@ -245,10 +262,38 @@ const CameraStats = () => {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
+  const handleViewsOnlineClick = () => {
+    const opening = !viewsOnlineOpen;
+    setViewsOnlineOpen(opening);
+    if (opening) {
+      setDevicesOnlineOpen(false);
+      setOfflineOpen(false);
+      setMigratedOpen(false);
+      setSelectedMfr(null);
+      setSelectedGen(null);
+      setSelectedModel(null);
+    }
+  };
+
+  const handleDevicesOnlineClick = () => {
+    const opening = !devicesOnlineOpen;
+    setDevicesOnlineOpen(opening);
+    if (opening) {
+      setViewsOnlineOpen(false);
+      setOfflineOpen(false);
+      setMigratedOpen(false);
+      setSelectedMfr(null);
+      setSelectedGen(null);
+      setSelectedModel(null);
+    }
+  };
+
   const handleOfflineClick = () => {
     const opening = !offlineOpen;
     setOfflineOpen(opening);
     if (opening) {
+      setViewsOnlineOpen(false);
+      setDevicesOnlineOpen(false);
       setMigratedOpen(false);
       setSelectedMfr(null);
       setSelectedGen(null);
@@ -260,6 +305,8 @@ const CameraStats = () => {
     const opening = !migratedOpen;
     setMigratedOpen(opening);
     if (opening) {
+      setViewsOnlineOpen(false);
+      setDevicesOnlineOpen(false);
       setOfflineOpen(false);
       setSelectedMfr(null);
       setSelectedGen(null);
@@ -276,6 +323,8 @@ const CameraStats = () => {
       setSelectedMfr(mfr);
       setSelectedGen(null);
       setSelectedModel(null);
+      setViewsOnlineOpen(false);
+      setDevicesOnlineOpen(false);
       setOfflineOpen(false);
       setMigratedOpen(false);
     }
@@ -291,6 +340,8 @@ const CameraStats = () => {
   };
 
   const closeDetail = () => {
+    setViewsOnlineOpen(false);
+    setDevicesOnlineOpen(false);
     setOfflineOpen(false);
     setMigratedOpen(false);
     setSelectedModel(null);
@@ -422,30 +473,46 @@ const CameraStats = () => {
         {!loading && filteredCount > 0 && (
           <>
             {/* ── Top stat cards ─────────────────────────────────────────────── */}
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-nowrap gap-4 overflow-x-auto pb-1">
               {/* Camera Views Online */}
-              <div className={`flex flex-col gap-1.5 bg-white dark:bg-gray-800 border ${onlineColor.border} rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4`}>
+              <button
+                onClick={handleViewsOnlineClick}
+                className={`flex flex-col gap-1.5 bg-white dark:bg-gray-800 border rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4 text-left transition-all ${
+                  viewsOnlineOpen
+                    ? `${onlineColor.border} ring-2 ring-offset-0`
+                    : `${onlineColor.border} hover:opacity-80`
+                }`}
+                style={viewsOnlineOpen ? { '--tw-ring-color': onlineColor.bar + '60' } : {}}
+              >
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Camera Views Online</span>
                 <div className="flex items-baseline gap-2">
                   <span className={`text-3xl font-bold ${onlineColor.text}`}>{onlinePercent}%</span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">{onlineCount} of {filteredCount}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">{onlineCount} of {filteredCount} · click to view</span>
                 </div>
                 <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${onlinePercent}%`, backgroundColor: onlineColor.bar }} />
                 </div>
-              </div>
+              </button>
 
               {/* Camera Devices Online */}
-              <div className={`flex flex-col gap-1.5 bg-white dark:bg-gray-800 border ${deviceColor.border} rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4`}>
+              <button
+                onClick={handleDevicesOnlineClick}
+                className={`flex flex-col gap-1.5 bg-white dark:bg-gray-800 border rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4 text-left transition-all ${
+                  devicesOnlineOpen
+                    ? `${deviceColor.border} ring-2 ring-offset-0`
+                    : `${deviceColor.border} hover:opacity-80`
+                }`}
+                style={devicesOnlineOpen ? { '--tw-ring-color': deviceColor.bar + '60' } : {}}
+              >
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Camera Devices Online</span>
                 <div className="flex items-baseline gap-2">
                   <span className={`text-3xl font-bold ${deviceColor.text}`}>{devicePercent}%</span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">{onlineDevices} of {totalDevices} devices</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">{onlineDevices} of {totalDevices} devices · click to view</span>
                 </div>
                 <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${devicePercent}%`, backgroundColor: deviceColor.bar }} />
                 </div>
-              </div>
+              </button>
 
               {/* Cameras Offline */}
               <button
@@ -677,7 +744,7 @@ const CameraStats = () => {
             )}
 
             {/* ── Camera detail table ────────────────────────────────────────── */}
-            {(offlineOpen || migratedOpen || selectedModel) && detailCameras.length > 0 && (
+            {(viewsOnlineOpen || devicesOnlineOpen || offlineOpen || migratedOpen || selectedModel) && detailCameras.length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-2">
