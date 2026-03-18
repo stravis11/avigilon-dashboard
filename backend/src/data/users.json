@@ -15,10 +15,10 @@
       "username": "testuser",
       "name": "Test User",
       "email": "test@example.com",
-      "password": "$2b$10$jRV/Pndi2vEtMbEHxn9FkeZWEqSLtfi./gfqBsNB2svhJoK0gzXBK",
+      "password": "$2b$10$zDSlTeu0YsHm5lgCGl3zmuBV9mZIW4cScMOvzUPGuWRx.gAIHwJ4K",
       "role": "user",
       "createdAt": "2026-02-02T14:28:10.170Z",
-      "updatedAt": "2026-02-02T14:28:10.170Z"
+      "updatedAt": "2026-02-19T12:10:32.990Z"
     }
   ]
 }
