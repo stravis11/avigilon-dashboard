@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw, Cloud, Thermometer, HardDrive, Cpu, Zap, Wind, Database } from 'lucide-react';
 import apiService from '../services/apiService';
+import { useCameraData } from '../context/CameraDataContext';
 
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
 
@@ -60,11 +61,10 @@ const formatUptime = (seconds) => {
 };
 
 const Dashboard = () => {
+  const { dashboardStats, sites, loading: contextLoading, error: contextError, refresh } = useCameraData();
   const [serverInfo, setServerInfo] = useState(null);
-  const [sites, setSites] = useState([]);
-  const [dashboardStats, setDashboardStats] = useState(null);
-  const [sitesLoading, setSitesLoading] = useState(true);
-  const [statsLoading, setStatsLoading] = useState(true);
+  const statsLoading = contextLoading && !dashboardStats;
+  const sitesLoading = contextLoading && sites.length === 0;
   const [error, setError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('checking');
   const [sortColumn, setSortColumn] = useState('name');
@@ -76,9 +76,9 @@ const Dashboard = () => {
   const [zabbixData, setZabbixData] = useState(null);
   const [zabbixLoading, setZabbixLoading] = useState(false);
 
-  // Load data on mount - simple approach, let apiClient handle auth
+  // Load lightweight dashboard-specific data on mount (server info, cloud status)
   useEffect(() => {
-    loadDashboardData();
+    loadDashboardExtras();
   }, []);
 
   // Fetch Zabbix SNMP data whenever a server is selected
@@ -100,58 +100,17 @@ const Dashboard = () => {
       .finally(() => setZabbixLoading(false));
   }, [selectedServer]);
 
-  const loadDashboardData = useCallback(async () => {
-    setSitesLoading(true);
-    setStatsLoading(true);
-    setError(null);
-    setConnectionStatus('checking');
-    setLoadingMessage('Connecting to server...');
+  // Update connection status when context data arrives
+  useEffect(() => {
+    if (dashboardStats) {
+      setConnectionStatus('connected');
+    }
+    if (contextError) {
+      setError(contextError);
+    }
+  }, [dashboardStats, contextError]);
 
-    // Helper to extract array from various response structures
-    const extractArray = (response, key) => {
-      const paths = [
-        response?.data?.result?.[key],
-        response?.result?.[key],
-        response?.data?.[key],
-        response?.[key],
-        response?.data,
-        response
-      ];
-      for (const path of paths) {
-        if (Array.isArray(path)) return path;
-      }
-      return [];
-    };
-
-    // Load all data in parallel, update UI as each completes
-    setLoadingMessage('Loading dashboard statistics...');
-
-    // Dashboard stats (includes servers with pre-computed camera counts)
-    apiService.getDashboardStats()
-      .then((response) => {
-        const stats = response?.data || response;
-        setDashboardStats(stats);
-        setConnectionStatus('connected');
-        setLoadingMessage(`Loaded ${stats?.totalServers || 0} servers, ${stats?.totalCameraChannels || 0} cameras`);
-      })
-      .catch((err) => {
-        console.error('Failed to load dashboard stats:', err.message);
-        setError(`Failed to load stats: ${err.message}`);
-      })
-      .finally(() => setStatsLoading(false));
-
-    // Sites
-    apiService.getSites()
-      .then((response) => {
-        const sitesList = extractArray(response, 'sites');
-        setSites(sitesList);
-        setConnectionStatus('connected');
-      })
-      .catch((err) => {
-        console.error('Failed to load sites:', err.message);
-      })
-      .finally(() => setSitesLoading(false));
-
+  const loadDashboardExtras = useCallback(async () => {
     // Server info
     apiService.getServerInfo()
       .then((response) => {
@@ -182,6 +141,13 @@ const Dashboard = () => {
       })
       .catch(() => {}); // silent — no token configured or no cached data
   }, []);
+
+  // Full refresh: triggers backend ACC re-poll + context re-fetch + dashboard extras
+  const loadDashboardData = useCallback(async () => {
+    setConnectionStatus('checking');
+    await refresh();
+    loadDashboardExtras();
+  }, [refresh, loadDashboardExtras]);
 
   const getStatusColor = (status) => {
     switch (status) {

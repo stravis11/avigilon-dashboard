@@ -112,6 +112,10 @@ const apiService = {
   // Zabbix (SNMP hardware details — OS, BIOS, iDRAC, DIMMs, fans, disks)
   getZabbixStatus: () => apiClient.get('/zabbix/status'),
   getZabbixServerHealth: (ipOrName) => apiClient.get(`/zabbix/servers/${encodeURIComponent(ipOrName)}`),
+
+  // Cache management
+  refreshCache: () => apiClient.post('/cache/refresh'),
+  getCacheStatus: () => apiClient.get('/cache/status'),
 };
 
 export default apiService;

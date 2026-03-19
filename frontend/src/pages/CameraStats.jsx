@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { BarChart2, RefreshCw, AlertCircle, X, ChevronRight, Download, FileText, Sheet, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import apiService from '../services/apiService';
 import { exportCSV, exportPDF } from '../utils/exportReport';
+import { useCameraData } from '../context/CameraDataContext';
 
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
 const COLORS = ['#2563eb','#dc2626','#16a34a','#ea580c','#9333ea','#0d9488','#db2777','#0284c7','#d97706','#65a30d'];
@@ -35,15 +36,7 @@ const getIpAddress = (camera) => {
 };
 
 const CameraStats = () => {
-  const [cameras, setCameras] = useState([]);
-  const [servers, setServers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [filteredCount, setFilteredCount] = useState(0);
-  const [offlineCount, setOfflineCount] = useState(0);
-  const [migratedCount, setMigratedCount] = useState(0);
-  const [connectedIps, setConnectedIps] = useState(new Set());
-  const [connectedNames, setConnectedNames] = useState(new Set());
+  const { cameras: allCameras, servers, loading, error, refresh } = useCameraData();
 
   const [offlineOpen, setOfflineOpen] = useState(false);
   const [migratedOpen, setMigratedOpen] = useState(false);
@@ -59,7 +52,39 @@ const CameraStats = () => {
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
 
-  useEffect(() => { loadData(); }, []);
+  // Derive active cameras and migration stats from context
+  const { cameras, filteredCount, offlineCount, migratedCount, connectedIps, connectedNames } = useMemo(() => {
+    const standbyIds = servers
+      .filter(s => STANDBY_SERVERS.includes(s.name))
+      .map(s => s.id);
+    const active = allCameras.filter(c => !standbyIds.includes(c.serverId));
+    const connectedCameras = active.filter(c => c.connectionState === 'CONNECTED');
+    const ips = new Set(
+      connectedCameras.map(c => getIpAddress(c)).filter(ip => ip && ip !== 'N/A')
+    );
+    const names = new Set(
+      connectedCameras.map(c => (c.name || c.deviceName || '').trim()).filter(Boolean)
+    );
+    const isMigratedCamera = (c) => {
+      const ip = getIpAddress(c);
+      if (ip && ip !== 'N/A') return ips.has(ip);
+      const name = (c.name || c.deviceName || '').trim();
+      return name ? names.has(name) : false;
+    };
+    const disconnected = active.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+    const migrated = disconnected.filter(isMigratedCamera);
+    const offline = disconnected.filter(c => !isMigratedCamera(c));
+    return {
+      cameras: active,
+      filteredCount: active.length,
+      offlineCount: offline.length,
+      migratedCount: migrated.length,
+      connectedIps: ips,
+      connectedNames: names,
+    };
+  }, [allCameras, servers]);
+
+  const loadData = refresh;
 
   // Close export dropdown when clicking outside
   useEffect(() => {
@@ -80,69 +105,6 @@ const CameraStats = () => {
       else await exportPDF(data);
     } finally {
       setExporting(false);
-    }
-  };
-
-  const extractArray = (response, key) => {
-    const paths = [
-      response?.data?.result?.[key],
-      response?.result?.[key],
-      response?.data?.[key],
-      response?.[key],
-      response?.data,
-      response,
-    ];
-    for (const path of paths) {
-      if (Array.isArray(path)) return path;
-    }
-    return [];
-  };
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [serversResponse, camerasResponse] = await Promise.all([
-        apiService.getServers(),
-        apiService.getCameras(),
-      ]);
-      const serversList = extractArray(serversResponse, 'servers');
-      setServers(serversList);
-      const standbyIds = serversList
-        .filter(s => STANDBY_SERVERS.includes(s.name))
-        .map(s => s.id);
-      const all = extractArray(camerasResponse, 'cameras');
-      const active = all.filter(c => !standbyIds.includes(c.serverId));
-      const connectedCameras = active.filter(c => c.connectionState === 'CONNECTED');
-      const ips = new Set(
-        connectedCameras
-          .map(c => getIpAddress(c))
-          .filter(ip => ip && ip !== 'N/A')
-      );
-      const names = new Set(
-        connectedCameras
-          .map(c => (c.name || c.deviceName || '').trim())
-          .filter(Boolean)
-      );
-      const isMigratedCamera = (c) => {
-        const ip = getIpAddress(c);
-        if (ip && ip !== 'N/A') return ips.has(ip);
-        const name = (c.name || c.deviceName || '').trim();
-        return name ? names.has(name) : false;
-      };
-      const disconnected = active.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
-      const migrated = disconnected.filter(isMigratedCamera);
-      const offline = disconnected.filter(c => !isMigratedCamera(c));
-      setConnectedIps(ips);
-      setConnectedNames(names);
-      setFilteredCount(active.length);
-      setOfflineCount(offline.length);
-      setMigratedCount(migrated.length);
-      setCameras(active);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 

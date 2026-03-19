@@ -9,6 +9,7 @@ import UserManagement from './pages/UserManagement';
 import CloudSettings from './pages/CloudSettings';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { CameraDataProvider } from './context/CameraDataContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ThemeToggle from './components/ThemeToggle';
 import ProfileModal from './components/ProfileModal';
@@ -228,6 +229,7 @@ const Navigation = () => {
 
 function AppContent() {
   return (
+    <CameraDataProvider>
     <Router>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
         <Navigation />
@@ -277,6 +279,7 @@ function AppContent() {
         </Routes>
       </div>
     </Router>
+    </CameraDataProvider>
   );
 }
 

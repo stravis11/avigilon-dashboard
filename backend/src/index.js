@@ -141,50 +141,9 @@ const { default: avigilonService } = await import('./services/avigilonServiceIns
 // Import Zabbix service (logs credential status on load)
 await import('./services/zabbixServiceInstance.js');
 
-// Pre-warm cache on startup
-const prewarmCache = async () => {
-  logger.info('Pre-warming cache...');
-  try {
-    // Login first to avoid multiple simultaneous login attempts
-    await avigilonService.login();
-
-    // Then fetch all data in parallel to populate cache
-    // Note: getServers() returns 404, so we use getServerIds() instead
-    // getDashboardStats is included so the first user request is always a cache hit
-    const [serversResult, sitesResult, camerasResult, statsResult] = await Promise.allSettled([
-      avigilonService.getServerIds(),
-      avigilonService.getSites(),
-      avigilonService.getCameras(),
-      avigilonService.getDashboardStats()
-    ]);
-
-    const results = {
-      serverIds: serversResult.status === 'fulfilled' ? 'OK' : 'FAILED',
-      sites: sitesResult.status === 'fulfilled' ? 'OK' : 'FAILED',
-      cameras: camerasResult.status === 'fulfilled' ? 'OK' : 'FAILED',
-      dashboardStats: statsResult.status === 'fulfilled' ? 'OK' : 'FAILED'
-    };
-
-    logger.info('Cache pre-warm complete:', results);
-
-    logger.debug('=== Testing Health-Related Endpoints ===');
-    try {
-      await avigilonService.getEntities();
-      logger.debug('Entities endpoint works!');
-    } catch (err) {
-      logger.debug('Entities endpoint error:', err.message);
-    }
-
-    try {
-      await avigilonService.getEventSubtopics();
-      logger.debug('Event-subtopics endpoint works!');
-    } catch (err) {
-      logger.debug('Event-subtopics endpoint error:', err.message);
-    }
-  } catch (error) {
-    logger.error('Cache pre-warm failed:', error.message);
-  }
-};
+// Start background cache polling (replaces one-shot pre-warm).
+// The first poll runs immediately; subsequent polls run every hour.
+// API endpoints serve from cache, so user requests return instantly.
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -213,8 +172,8 @@ app.listen(PORT, () => {
 ╚════════════════════════════════════════════════╝
   `);
 
-  // Pre-warm cache after server starts
-  prewarmCache();
+  // Start background cache polling after server starts
+  avigilonService.startBackgroundPolling();
 });
 
 export default app;

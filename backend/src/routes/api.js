@@ -39,6 +39,9 @@ import {
   logout,
   // Dashboard
   getDashboardStats,
+  // Cache
+  refreshCache,
+  getCacheStatus,
 } from '../controllers/avigilonController.js';
 
 import {
@@ -114,6 +117,10 @@ router.get('/events/search', searchEvents);
 
 // Dashboard
 router.get('/dashboard/stats', getDashboardStats);
+
+// Cache management
+router.post('/cache/refresh', refreshCache);
+router.get('/cache/status', getCacheStatus);
 
 // Cloud API (Hardware Health Monitoring)
 router.post('/cloud/token', setCloudToken);

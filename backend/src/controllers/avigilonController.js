@@ -499,3 +499,22 @@ export const getDashboardStats = async (req, res) => {
     });
   }
 };
+
+// Cache management
+export const refreshCache = async (req, res) => {
+  try {
+    await avigilonService.refreshCache();
+    const age = avigilonService.getCacheAge();
+    res.json({ success: true, message: 'Cache refreshed', cache: age });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+export const getCacheStatus = async (req, res) => {
+  const age = avigilonService.getCacheAge();
+  res.json({ success: true, data: age });
+};

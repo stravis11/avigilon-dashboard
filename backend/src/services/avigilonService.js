@@ -34,7 +34,13 @@ class AvigilonService {
 
     // Cache for expensive API calls
     this.cache = new Map();
-    this.cacheTTL = 300000; // 5 minutes cache TTL
+    this.cacheTTL = 3600000; // 1 hour cache TTL (background poll keeps it fresh)
+
+    // Background polling interval (1 hour) — keeps cache warm so user requests are instant
+    this._pollInterval = null;
+    this._pollIntervalMs = 3600000; // 1 hour
+    this._cacheReady = null;          // Promise that resolves when first poll completes
+    this._cacheReadyResolve = null;
 
     // Login deduplication: concurrent callers share the same in-flight login promise
     this._pendingLogin = null;
@@ -147,6 +153,111 @@ class AvigilonService {
   clearCache() {
     this.cache.clear();
     logger.debug('Cache cleared');
+  }
+
+  /**
+   * Start background polling to keep cache warm.
+   * Called once after server startup — runs the first poll immediately,
+   * then repeats every _pollIntervalMs.
+   */
+  startBackgroundPolling() {
+    if (this._pollInterval) return; // already running
+
+    // Create a promise that API endpoints can await for the first cache fill
+    this._cacheReady = new Promise(resolve => { this._cacheReadyResolve = resolve; });
+
+    // First poll immediately
+    this._pollCache().then(() => {
+      if (this._cacheReadyResolve) {
+        this._cacheReadyResolve();
+        this._cacheReadyResolve = null;
+      }
+    });
+
+    // Then repeat
+    this._pollInterval = setInterval(() => this._pollCache(), this._pollIntervalMs);
+    logger.info(`Background cache polling started (every ${this._pollIntervalMs / 60000} min)`);
+  }
+
+  /**
+   * Wait until the first background poll has completed (cache is warm).
+   */
+  async waitForCache() {
+    if (this._cacheReady) await this._cacheReady;
+  }
+
+  /**
+   * Internal: fetch core datasets and store in cache.
+   * On failure the previous cached data is kept (stale-while-error).
+   */
+  async _pollCache() {
+    logger.info('Background cache poll starting...');
+    try {
+      await this.ensureSession();
+
+      const [serversResult, sitesResult, camerasResult] = await Promise.allSettled([
+        this._fetchAndCache('serverIds', () => this.axiosInstance.get('/mt/api/rest/v1/server/ids').then(r => r.data)),
+        this._fetchAndCache('sites', () => this.axiosInstance.get('/mt/api/rest/v1/sites').then(r => r.data)),
+        this._fetchAndCache('cameras_default', () => this.axiosInstance.get('/mt/api/rest/v1/cameras').then(r => r.data)),
+      ]);
+
+      // Dashboard stats depend on cameras + servers, so compute after they are cached
+      try {
+        const stats = await this.getDashboardStats();
+        // getDashboardStats already caches itself
+      } catch (e) {
+        logger.warn('Background poll: dashboard stats failed:', e.message);
+      }
+
+      const results = {
+        serverIds: serversResult.status === 'fulfilled' ? 'OK' : 'FAILED',
+        sites: sitesResult.status === 'fulfilled' ? 'OK' : 'FAILED',
+        cameras: camerasResult.status === 'fulfilled' ? 'OK' : 'FAILED',
+      };
+      logger.info('Background cache poll complete:', results);
+    } catch (error) {
+      logger.error('Background cache poll failed:', error.message);
+    }
+  }
+
+  /**
+   * Fetch data and store in cache. On failure, keeps the previous cached value.
+   */
+  async _fetchAndCache(cacheKey, fetchFn) {
+    try {
+      const data = await fetchFn();
+      this.setCache(cacheKey, data);
+      return data;
+    } catch (error) {
+      logger.warn(`Background fetch for ${cacheKey} failed (keeping stale):`, error.message);
+      // Don't clear existing cache — serve stale data rather than nothing
+      throw error;
+    }
+  }
+
+  /**
+   * Force an immediate cache refresh (triggered by user via API).
+   * Returns when the refresh is complete.
+   */
+  async refreshCache() {
+    logger.info('Manual cache refresh triggered');
+    this.cache.clear();
+    await this._pollCache();
+  }
+
+  /**
+   * Get the timestamp of when the cache was last refreshed, or null.
+   */
+  getCacheAge() {
+    const entry = this.cache.get('cameras_default');
+    if (entry) {
+      return {
+        lastRefreshed: new Date(entry.expiry - this.cacheTTL).toISOString(),
+        expiresAt: new Date(entry.expiry).toISOString(),
+        ageMs: Date.now() - (entry.expiry - this.cacheTTL),
+      };
+    }
+    return null;
   }
 
   /**
@@ -538,13 +649,17 @@ class AvigilonService {
    * API: GET /server/ids
    */
   async getServerIds() {
+    const cacheKey = 'serverIds';
+    const cached = this.getCached(cacheKey);
+    if (cached) return cached;
+
     try {
       await this.ensureSession();
       const response = await this.axiosInstance.get('/mt/api/rest/v1/server/ids');
-      // Log first server to see available fields
       if (response.data?.result?.servers?.[0]) {
         logger.debug('ServerIds data sample:', JSON.stringify(response.data.result.servers[0], null, 2));
       }
+      this.setCache(cacheKey, response.data);
       return response.data;
     } catch (error) {
       console.error('Failed to get server IDs:', error.message);

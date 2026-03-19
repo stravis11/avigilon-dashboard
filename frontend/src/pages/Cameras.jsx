@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, RefreshCw, AlertCircle, X, ChevronUp, ChevronDown, ImageOff, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import apiService from '../services/apiService';
 import LiveStreamModal from '../components/LiveStreamModal';
+import { useCameraData } from '../context/CameraDataContext';
 
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
@@ -169,89 +170,30 @@ const getMacAddress = (camera) => {
 };
 
 const Cameras = () => {
-  const [cameras, setCameras] = useState([]);
-  const [servers, setServers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { cameras: allCameras, servers, loading, error, refresh } = useCameraData();
   const [selectedCamera, setSelectedCamera] = useState(null);
   const [sortColumn, setSortColumn] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
-  const [totalCount, setTotalCount] = useState(0);
-  const [filteredCount, setFilteredCount] = useState(0);
-  const [offlineCount, setOfflineCount] = useState(0);
   const [showOfflineOnly, setShowOfflineOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [liveStreamCamera, setLiveStreamCamera] = useState(null);
 
-  useEffect(() => {
-    loadCameras();
-  }, []);
+  // Derive active cameras (exclude standby servers)
+  const { cameras, totalCount, filteredCount, offlineCount } = useMemo(() => {
+    const standbyServerIds = servers
+      .filter(server => STANDBY_SERVERS.includes(server.name))
+      .map(server => server.id);
 
-  // Helper to extract array from response
-  const extractArray = (response, key) => {
-    const paths = [
-      response?.data?.result?.[key],
-      response?.result?.[key],
-      response?.data?.[key],
-      response?.[key],
-      response?.data,
-      response
-    ];
-    for (const path of paths) {
-      if (Array.isArray(path)) return path;
-    }
-    return [];
-  };
+    const total = allCameras.length;
+    const active = allCameras.filter(c => !standbyServerIds.includes(c.serverId));
+    const offline = active.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
 
-  const loadCameras = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    return { cameras: active, totalCount: total, filteredCount: active.length, offlineCount: offline.length };
+  }, [allCameras, servers]);
 
-      // Load servers and cameras in parallel
-      const [serversResponse, camerasResponse] = await Promise.all([
-        apiService.getServers(),
-        apiService.getCameras()
-      ]);
-
-      // Extract servers list
-      const serversList = extractArray(serversResponse, 'servers');
-      setServers(serversList);
-
-      // Get standby server IDs
-      const standbyServerIds = serversList
-        .filter(server => STANDBY_SERVERS.includes(server.name))
-        .map(server => server.id);
-
-      // Extract cameras array from response
-      let camerasList = extractArray(camerasResponse, 'cameras');
-
-      setTotalCount(camerasList.length);
-
-      // Filter out cameras from standby servers
-      const activeCameras = camerasList.filter(
-        camera => !standbyServerIds.includes(camera.serverId)
-      );
-      setFilteredCount(activeCameras.length);
-
-      // Calculate offline camera count
-      const offlineCameras = activeCameras.filter(
-        camera => camera.connectionState && camera.connectionState !== 'CONNECTED'
-      );
-      setOfflineCount(offlineCameras.length);
-
-      // Load all cameras (pagination handles display)
-      setCameras(activeCameras);
-      setCurrentPage(1);
-    } catch (err) {
-      console.error('Failed to load cameras:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadCameras = refresh;
 
   const handleCameraClick = async (camera) => {
     try {
