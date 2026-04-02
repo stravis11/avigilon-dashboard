@@ -35,6 +35,9 @@ const getIpAddress = (camera) => {
   return ip.split(':')[0] || 'N/A';
 };
 
+// Strip trailing channel/head suffix e.g. "Camera Name (1)" → "Camera Name"
+const stripChannelSuffix = (name) => (name || '').replace(/\s*\(\d+\)\s*$/, '').trim();
+
 const CameraStats = () => {
   const { cameras: allCameras, servers, loading, error, refresh } = useCameraData();
 
@@ -139,15 +142,21 @@ const CameraStats = () => {
   const onlineDevices = new Set(nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED').map(deviceKey)).size;
 
   // Offline devices: one row per unique device IP that is offline (non-migrated)
+  // Use stripped name (without channel suffix) as the display name
   const offlineDeviceCameras = (() => {
     const seen = new Set();
-    return nonMigratedCameras.filter(c => {
-      if (c.connectionState === 'CONNECTED') return false;
-      const key = deviceKey(c);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return nonMigratedCameras
+      .filter(c => {
+        if (c.connectionState === 'CONNECTED') return false;
+        const key = deviceKey(c);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(c => ({
+        ...c,
+        _displayName: stripChannelSuffix(c.name || c.deviceName || '') || 'Unnamed',
+      }));
   })();
   const offlineDeviceCount = offlineDeviceCameras.length;
   const devicePercent = totalDevices > 0 ? (onlineDevices / totalDevices) * 100 : 0;
@@ -222,7 +231,7 @@ const CameraStats = () => {
     detailTitle = 'Camera Devices Online';
     detailDotColor = deviceColor.bar;
   } else if (offlineOpen) {
-    detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED' && !isMigrated(c));
+    detailCameras = nonMigratedCameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
     detailTitle = 'Camera Views Offline';
     detailDotColor = '#ef4444';
   } else if (devicesOfflineOpen) {
@@ -807,7 +816,7 @@ const CameraStats = () => {
                       {sortedDetailCameras.map(camera => (
                         <tr key={camera.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-                            {camera.name || camera.deviceName || 'Unnamed'}
+                            {camera._displayName || camera.name || camera.deviceName || 'Unnamed'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {(() => {
