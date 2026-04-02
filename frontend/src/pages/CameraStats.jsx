@@ -168,7 +168,7 @@ const CameraStats = () => {
 
   // Manufacturer breakdown — count unique devices (by IP) per manufacturer
   const mfrDeviceKeys = {};
-  cameras.forEach(camera => {
+  nonMigratedCameras.forEach(camera => {
     const mfr = normalizeMfr(camera.manufacturer);
     if (!mfrDeviceKeys[mfr]) mfrDeviceKeys[mfr] = new Set();
     mfrDeviceKeys[mfr].add(deviceKey(camera));
@@ -178,7 +178,7 @@ const CameraStats = () => {
     .sort(([, a], [, b]) => b - a);
 
   // All cameras for the selected manufacturer
-  const mfrCameras = selectedMfr ? cameras.filter(c => normalizeMfr(c.manufacturer) === selectedMfr) : [];
+  const mfrCameras = selectedMfr ? nonMigratedCameras.filter(c => normalizeMfr(c.manufacturer) === selectedMfr) : [];
   const mfrDeviceCount = selectedMfr ? (mfrDeviceKeys[selectedMfr]?.size ?? 0) : 0;
   const isAvigilon = selectedMfr === AVIGILON_MFR;
 
