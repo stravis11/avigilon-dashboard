@@ -166,9 +166,29 @@ const CameraStats = () => {
     ? { text: 'text-yellow-600 dark:text-yellow-400', bar: '#eab308', border: 'border-yellow-200 dark:border-yellow-800' }
     : { text: 'text-red-600 dark:text-red-400', bar: '#ef4444', border: 'border-red-200 dark:border-red-800' };
 
+  // Base pool for manufacturer/model breakdowns — filter to offline cameras when an offline panel is active
+  const mfrPoolBase = (() => {
+    if (offlineOpen) {
+      // views offline: all disconnected non-migrated cameras
+      return nonMigratedCameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+    }
+    if (devicesOfflineOpen) {
+      // devices offline: one entry per unique device IP that is offline
+      const seen = new Set();
+      return nonMigratedCameras.filter(c => {
+        if (c.connectionState === 'CONNECTED') return false;
+        const k = deviceKey(c);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+    return nonMigratedCameras;
+  })();
+
   // Manufacturer breakdown — count unique devices (by IP) per manufacturer
   const mfrDeviceKeys = {};
-  nonMigratedCameras.forEach(camera => {
+  mfrPoolBase.forEach(camera => {
     const mfr = normalizeMfr(camera.manufacturer);
     if (!mfrDeviceKeys[mfr]) mfrDeviceKeys[mfr] = new Set();
     mfrDeviceKeys[mfr].add(deviceKey(camera));
@@ -177,8 +197,8 @@ const CameraStats = () => {
     .map(([mfr, keys]) => [mfr, keys.size])
     .sort(([, a], [, b]) => b - a);
 
-  // All cameras for the selected manufacturer
-  const mfrCameras = selectedMfr ? nonMigratedCameras.filter(c => normalizeMfr(c.manufacturer) === selectedMfr) : [];
+  // All cameras for the selected manufacturer (from same offline-aware pool)
+  const mfrCameras = selectedMfr ? mfrPoolBase.filter(c => normalizeMfr(c.manufacturer) === selectedMfr) : [];
   const mfrDeviceCount = selectedMfr ? (mfrDeviceKeys[selectedMfr]?.size ?? 0) : 0;
   const isAvigilon = selectedMfr === AVIGILON_MFR;
 
@@ -602,7 +622,7 @@ const CameraStats = () => {
                     <div
                       key={mfr}
                       className="h-full cursor-pointer transition-opacity hover:opacity-80"
-                      style={{ width: `${(count / totalDevices) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }}
+                      style={{ width: `${(count / mfrPoolBase.length) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }}
                       title={`${mfr}: ${count} device${count !== 1 ? 's' : ''}`}
                       onClick={() => handleMfrClick(mfr)}
                     />
@@ -612,7 +632,7 @@ const CameraStats = () => {
                 {/* Manufacturer cards */}
                 <div className="flex flex-wrap gap-3">
                   {mfrBreakdown.map(([mfr, count], i) => {
-                    const pct = (count / totalDevices) * 100;
+                    const pct = (count / mfrPoolBase.length) * 100;
                     const isSelected = selectedMfr === mfr;
                     return (
                       <button
