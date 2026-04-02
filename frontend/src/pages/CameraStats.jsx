@@ -215,7 +215,21 @@ const CameraStats = () => {
   let detailCameras = [];
   let detailTitle = '';
   let detailDotColor = null;
-  if (viewsOnlineOpen) {
+  if (selectedMfr && selectedModel) {
+    const modelIdx = mfrModelBreakdown.findIndex(([m]) => m === selectedModel);
+    detailDotColor = COLORS[modelIdx % COLORS.length];
+    let base = mfrCameras.filter(c => (c.model || c.deviceModel || 'Unknown') === selectedModel);
+    if (offlineOpen || devicesOfflineOpen) {
+      base = base.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+      if (devicesOfflineOpen) {
+        const seen = new Set();
+        base = base.filter(c => { const k = deviceKey(c); if (seen.has(k)) return false; seen.add(k); return true; });
+        base = base.map(c => ({ ...c, _displayName: stripChannelSuffix(c.name || c.deviceName || '') || 'Unnamed' }));
+      }
+    }
+    detailCameras = base;
+    detailTitle = selectedModel;
+  } else if (viewsOnlineOpen) {
     detailCameras = nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED');
     detailTitle = 'Camera Views Online';
     detailDotColor = onlineColor.bar;
@@ -242,11 +256,6 @@ const CameraStats = () => {
     detailCameras = cameras.filter(c => isMigrated(c));
     detailTitle = 'Migrated (Stale) Cameras';
     detailDotColor = '#f97316';
-  } else if (selectedMfr && selectedModel) {
-    detailCameras = mfrCameras.filter(c => (c.model || c.deviceModel || 'Unknown') === selectedModel);
-    detailTitle = `${selectedModel}`;
-    const modelIdx = mfrModelBreakdown.findIndex(([m]) => m === selectedModel);
-    detailDotColor = COLORS[modelIdx % COLORS.length];
   }
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -332,8 +341,7 @@ const CameraStats = () => {
       setSelectedModel(null);
       setViewsOnlineOpen(false);
       setDevicesOnlineOpen(false);
-      setOfflineOpen(false);
-      setDevicesOfflineOpen(false);
+      // preserve offlineOpen / devicesOfflineOpen so model drill-down stays in offline context
       setMigratedOpen(false);
     }
   };
@@ -353,6 +361,8 @@ const CameraStats = () => {
     setOfflineOpen(false);
     setDevicesOfflineOpen(false);
     setMigratedOpen(false);
+    setSelectedMfr(null);
+    setSelectedGen(null);
     setSelectedModel(null);
   };
 
