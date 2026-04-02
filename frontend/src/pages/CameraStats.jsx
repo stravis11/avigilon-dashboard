@@ -39,6 +39,7 @@ const CameraStats = () => {
   const { cameras: allCameras, servers, loading, error, refresh } = useCameraData();
 
   const [offlineOpen, setOfflineOpen] = useState(false);
+  const [devicesOfflineOpen, setDevicesOfflineOpen] = useState(false);
   const [migratedOpen, setMigratedOpen] = useState(false);
   const [devicesOnlineOpen, setDevicesOnlineOpen] = useState(false);
   const [viewsOnlineOpen, setViewsOnlineOpen] = useState(false);
@@ -49,7 +50,7 @@ const CameraStats = () => {
   const [exporting, setExporting] = useState(false);
   const exportRef = useRef(null);
 
-  const [sortCol, setSortCol] = useState(null);
+  const [sortCol, setSortCol] = useState('ip');
   const [sortDir, setSortDir] = useState('asc');
 
   // Derive active cameras and migration stats from context
@@ -93,8 +94,8 @@ const CameraStats = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Reset sort when detail view changes
-  useEffect(() => { setSortCol(null); setSortDir('asc'); }, [offlineOpen, migratedOpen, devicesOnlineOpen, viewsOnlineOpen, selectedModel]);
+  // Reset sort to IP when detail view changes
+  useEffect(() => { setSortCol('ip'); setSortDir('asc'); }, [offlineOpen, devicesOfflineOpen, migratedOpen, devicesOnlineOpen, viewsOnlineOpen, selectedModel]);
 
   const handleExport = async (format) => {
     setExportOpen(false);
@@ -136,6 +137,19 @@ const CameraStats = () => {
   const nonMigratedCameras = cameras.filter(c => !isMigrated(c));
   const totalDevices = new Set(nonMigratedCameras.map(deviceKey)).size;
   const onlineDevices = new Set(nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED').map(deviceKey)).size;
+
+  // Offline devices: one row per unique device IP that is offline (non-migrated)
+  const offlineDeviceCameras = (() => {
+    const seen = new Set();
+    return nonMigratedCameras.filter(c => {
+      if (c.connectionState === 'CONNECTED') return false;
+      const key = deviceKey(c);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
+  const offlineDeviceCount = offlineDeviceCameras.length;
   const devicePercent = totalDevices > 0 ? (onlineDevices / totalDevices) * 100 : 0;
   const deviceColor = devicePercent >= 95
     ? { text: 'text-green-600 dark:text-green-400', bar: '#22c55e', border: 'border-green-200 dark:border-green-800' }
@@ -209,8 +223,12 @@ const CameraStats = () => {
     detailDotColor = deviceColor.bar;
   } else if (offlineOpen) {
     detailCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED' && !isMigrated(c));
-    detailTitle = 'Offline Cameras';
+    detailTitle = 'Camera Views Offline';
     detailDotColor = '#ef4444';
+  } else if (devicesOfflineOpen) {
+    detailCameras = offlineDeviceCameras;
+    detailTitle = 'Camera Devices Offline';
+    detailDotColor = '#dc2626';
   } else if (migratedOpen) {
     detailCameras = cameras.filter(c => isMigrated(c));
     detailTitle = 'Migrated (Stale) Cameras';
@@ -230,6 +248,7 @@ const CameraStats = () => {
     if (opening) {
       setDevicesOnlineOpen(false);
       setOfflineOpen(false);
+      setDevicesOfflineOpen(false);
       setMigratedOpen(false);
       setSelectedMfr(null);
       setSelectedGen(null);
@@ -243,6 +262,7 @@ const CameraStats = () => {
     if (opening) {
       setViewsOnlineOpen(false);
       setOfflineOpen(false);
+      setDevicesOfflineOpen(false);
       setMigratedOpen(false);
       setSelectedMfr(null);
       setSelectedGen(null);
@@ -256,6 +276,21 @@ const CameraStats = () => {
     if (opening) {
       setViewsOnlineOpen(false);
       setDevicesOnlineOpen(false);
+      setDevicesOfflineOpen(false);
+      setMigratedOpen(false);
+      setSelectedMfr(null);
+      setSelectedGen(null);
+      setSelectedModel(null);
+    }
+  };
+
+  const handleDevicesOfflineClick = () => {
+    const opening = !devicesOfflineOpen;
+    setDevicesOfflineOpen(opening);
+    if (opening) {
+      setViewsOnlineOpen(false);
+      setDevicesOnlineOpen(false);
+      setOfflineOpen(false);
       setMigratedOpen(false);
       setSelectedMfr(null);
       setSelectedGen(null);
@@ -270,6 +305,7 @@ const CameraStats = () => {
       setViewsOnlineOpen(false);
       setDevicesOnlineOpen(false);
       setOfflineOpen(false);
+      setDevicesOfflineOpen(false);
       setSelectedMfr(null);
       setSelectedGen(null);
       setSelectedModel(null);
@@ -288,6 +324,7 @@ const CameraStats = () => {
       setViewsOnlineOpen(false);
       setDevicesOnlineOpen(false);
       setOfflineOpen(false);
+      setDevicesOfflineOpen(false);
       setMigratedOpen(false);
     }
   };
@@ -305,6 +342,7 @@ const CameraStats = () => {
     setViewsOnlineOpen(false);
     setDevicesOnlineOpen(false);
     setOfflineOpen(false);
+    setDevicesOfflineOpen(false);
     setMigratedOpen(false);
     setSelectedModel(null);
   };
@@ -324,7 +362,7 @@ const CameraStats = () => {
   };
 
   const sortedDetailCameras = [...detailCameras].sort((a, b) => {
-    if (!sortCol) return 0;
+    if (!sortCol) return compareIp(getIpAddress(a), getIpAddress(b));
     let cmp = 0;
     if (sortCol === 'name') {
       cmp = (a.name || a.deviceName || 'Unnamed').localeCompare(b.name || b.deviceName || 'Unnamed');
@@ -485,7 +523,7 @@ const CameraStats = () => {
                     : 'border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-700'
                 }`}
               >
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cameras Offline</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Camera Views Offline</span>
                 <div className="flex items-baseline gap-2">
                   <span className={`text-3xl font-bold ${offlineCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
                     {offlineCount > 0 ? `${((offlineCount / filteredCount) * 100).toFixed(2)}%` : '0%'}
@@ -496,6 +534,29 @@ const CameraStats = () => {
                 </div>
                 <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div className="h-full rounded-full bg-red-500" style={{ width: `${offlineCount > 0 ? ((offlineCount / filteredCount) * 100).toFixed(2) : 0}%` }} />
+                </div>
+              </button>
+
+              {/* Camera Devices Offline */}
+              <button
+                onClick={handleDevicesOfflineClick}
+                className={`flex flex-col gap-1.5 bg-white dark:bg-gray-800 border rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4 text-left transition-all ${
+                  devicesOfflineOpen
+                    ? 'border-red-400 dark:border-red-500 ring-2 ring-red-300 dark:ring-red-700'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-700'
+                }`}
+              >
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Camera Devices Offline</span>
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-3xl font-bold ${offlineDeviceCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                    {offlineDeviceCount > 0 ? `${((offlineDeviceCount / totalDevices) * 100).toFixed(2)}%` : '0%'}
+                  </span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {offlineDeviceCount > 0 ? `${offlineDeviceCount} devices offline · click to view` : 'all online'}
+                  </span>
+                </div>
+                <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-red-500" style={{ width: `${offlineDeviceCount > 0 ? ((offlineDeviceCount / totalDevices) * 100).toFixed(2) : 0}%` }} />
                 </div>
               </button>
 
@@ -686,14 +747,14 @@ const CameraStats = () => {
             )}
 
             {/* ── Camera detail table ────────────────────────────────────────── */}
-            {(viewsOnlineOpen || devicesOnlineOpen || offlineOpen || migratedOpen || selectedModel) && detailCameras.length > 0 && (
+            {(viewsOnlineOpen || devicesOnlineOpen || offlineOpen || devicesOfflineOpen || migratedOpen || selectedModel) && detailCameras.length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: detailDotColor }} />
                     <h2 className="font-semibold text-gray-900 dark:text-white">{detailTitle}</h2>
                     <span className="text-sm text-gray-500 dark:text-gray-400">({detailCameras.length})</span>
-                    {offlineOpen && migratedCount > 0 && (
+                    {(offlineOpen || devicesOfflineOpen) && migratedCount > 0 && (
                       <button
                         onClick={handleMigratedClick}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors ml-1"
@@ -707,7 +768,7 @@ const CameraStats = () => {
                         onClick={handleOfflineClick}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors ml-1"
                       >
-                        ← {offlineCount} offline
+                        ← {offlineCount} views offline
                       </button>
                     )}
                   </div>
