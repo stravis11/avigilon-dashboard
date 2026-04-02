@@ -117,7 +117,7 @@ const CameraStats = () => {
 
   const activeCount = filteredCount - migratedCount;
   const onlineCount = activeCount - offlineCount;
-  const onlinePercent = activeCount > 0 ? Math.round((onlineCount / activeCount) * 100) : 0;
+  const onlinePercent = activeCount > 0 ? (onlineCount / activeCount) * 100 : 0;
   const onlineColor = onlinePercent >= 95
     ? { text: 'text-green-600 dark:text-green-400', bar: '#22c55e', border: 'border-green-200 dark:border-green-800' }
     : onlinePercent >= 80
@@ -136,7 +136,7 @@ const CameraStats = () => {
   const nonMigratedCameras = cameras.filter(c => !isMigrated(c));
   const totalDevices = new Set(nonMigratedCameras.map(deviceKey)).size;
   const onlineDevices = new Set(nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED').map(deviceKey)).size;
-  const devicePercent = totalDevices > 0 ? Math.round((onlineDevices / totalDevices) * 100) : 0;
+  const devicePercent = totalDevices > 0 ? (onlineDevices / totalDevices) * 100 : 0;
   const deviceColor = devicePercent >= 95
     ? { text: 'text-green-600 dark:text-green-400', bar: '#22c55e', border: 'border-green-200 dark:border-green-800' }
     : devicePercent >= 80
@@ -448,11 +448,11 @@ const CameraStats = () => {
               >
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Camera Views Online</span>
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-3xl font-bold ${onlineColor.text}`}>{onlinePercent}%</span>
+                  <span className={`text-3xl font-bold ${onlineColor.text}`}>{onlinePercent.toFixed(2)}%</span>
                   <span className="text-sm text-gray-500 dark:text-gray-400">{onlineCount} of {filteredCount} · click to view</span>
                 </div>
                 <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${onlinePercent}%`, backgroundColor: onlineColor.bar }} />
+                  <div className="h-full rounded-full" style={{ width: `${onlinePercent.toFixed(2)}%`, backgroundColor: onlineColor.bar }} />
                 </div>
               </button>
 
@@ -468,11 +468,11 @@ const CameraStats = () => {
               >
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Camera Devices Online</span>
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-3xl font-bold ${deviceColor.text}`}>{devicePercent}%</span>
+                  <span className={`text-3xl font-bold ${deviceColor.text}`}>{devicePercent.toFixed(2)}%</span>
                   <span className="text-sm text-gray-500 dark:text-gray-400">{onlineDevices} of {totalDevices} devices · click to view</span>
                 </div>
                 <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${devicePercent}%`, backgroundColor: deviceColor.bar }} />
+                  <div className="h-full rounded-full" style={{ width: `${devicePercent.toFixed(2)}%`, backgroundColor: deviceColor.bar }} />
                 </div>
               </button>
 
@@ -488,37 +488,17 @@ const CameraStats = () => {
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cameras Offline</span>
                 <div className="flex items-baseline gap-2">
                   <span className={`text-3xl font-bold ${offlineCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                    {offlineCount > 0 ? `${Math.round((offlineCount / filteredCount) * 100)}%` : '0%'}
+                    {offlineCount > 0 ? `${((offlineCount / filteredCount) * 100).toFixed(2)}%` : '0%'}
                   </span>
                   <span className="text-sm text-gray-500 dark:text-gray-400">
                     {offlineCount > 0 ? `${offlineCount} offline · click to view` : 'all online'}
                   </span>
                 </div>
                 <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-red-500" style={{ width: `${Math.round((offlineCount / filteredCount) * 100)}%` }} />
+                  <div className="h-full rounded-full bg-red-500" style={{ width: `${offlineCount > 0 ? ((offlineCount / filteredCount) * 100).toFixed(2) : 0}%` }} />
                 </div>
               </button>
 
-              {/* Cameras Migrated (stale entries on old server) */}
-              {migratedCount > 0 && (
-                <button
-                  onClick={handleMigratedClick}
-                  className={`flex flex-col gap-1.5 bg-white dark:bg-gray-800 border rounded-lg shadow-sm dark:shadow-gray-900/50 px-5 py-4 text-left transition-all ${
-                    migratedOpen
-                      ? 'border-orange-400 dark:border-orange-500 ring-2 ring-orange-300 dark:ring-orange-700'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-orange-300 dark:hover:border-orange-700'
-                  }`}
-                >
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Migrated (Stale)</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-orange-500 dark:text-orange-400">{migratedCount}</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">moved to another server · click to view</span>
-                  </div>
-                  <div className="w-48 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-orange-500" style={{ width: `${Math.round((migratedCount / filteredCount) * 100)}%` }} />
-                  </div>
-                </button>
-              )}
             </div>
 
             {/* ── By Manufacturer ────────────────────────────────────────────── */}
@@ -552,7 +532,7 @@ const CameraStats = () => {
                 {/* Manufacturer cards */}
                 <div className="flex flex-wrap gap-3">
                   {mfrBreakdown.map(([mfr, count], i) => {
-                    const pct = Math.round((count / totalDevices) * 100);
+                    const pct = (count / totalDevices) * 100;
                     const isSelected = selectedMfr === mfr;
                     return (
                       <button
@@ -574,10 +554,10 @@ const CameraStats = () => {
                         </div>
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-2xl font-bold text-gray-900 dark:text-white">{count}</span>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">{pct}%</span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">{pct.toFixed(2)}%</span>
                         </div>
                         <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                          <div className="h-full rounded-full" style={{ width: `${pct.toFixed(2)}%`, backgroundColor: COLORS[i % COLORS.length] }} />
                         </div>
                       </button>
                     );
@@ -618,7 +598,7 @@ const CameraStats = () => {
                     {/* Generation stat cards */}
                     <div className="flex flex-wrap gap-3">
                       {genBreakdown.map(([gen, count]) => {
-                        const pct = Math.round((count / mfrDeviceCount) * 100);
+                        const pct = (count / mfrDeviceCount) * 100;
                         const isSelected = selectedGen === gen;
                         return (
                           <button
@@ -640,10 +620,10 @@ const CameraStats = () => {
                             </div>
                             <div className="flex items-baseline gap-1.5">
                               <span className="text-2xl font-bold text-gray-900 dark:text-white">{count}</span>
-                              <span className="text-sm text-gray-500 dark:text-gray-400">{pct}%</span>
+                              <span className="text-sm text-gray-500 dark:text-gray-400">{pct.toFixed(2)}%</span>
                             </div>
                             <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: GEN_COLORS[gen] }} />
+                              <div className="h-full rounded-full" style={{ width: `${pct.toFixed(2)}%`, backgroundColor: GEN_COLORS[gen] }} />
                             </div>
                           </button>
                         );
@@ -681,7 +661,7 @@ const CameraStats = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-0.5">
                       {mfrModelBreakdown.map(([model, count], i) => {
                         const isActive = selectedModel === model;
-                        const pct = Math.round((count / modelDeviceCount) * 100);
+                          const pct = (count / modelDeviceCount) * 100;
                         return (
                           <button
                             key={model}
@@ -695,7 +675,7 @@ const CameraStats = () => {
                               {model}
                             </span>
                             <span className="text-sm font-semibold text-gray-900 dark:text-white flex-shrink-0">{count}</span>
-                            <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 w-8 text-right">{pct}%</span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 w-8 text-right">{pct.toFixed(2)}%</span>
                           </button>
                         );
                       })}
@@ -713,6 +693,23 @@ const CameraStats = () => {
                     <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: detailDotColor }} />
                     <h2 className="font-semibold text-gray-900 dark:text-white">{detailTitle}</h2>
                     <span className="text-sm text-gray-500 dark:text-gray-400">({detailCameras.length})</span>
+                    {offlineOpen && migratedCount > 0 && (
+                      <button
+                        onClick={handleMigratedClick}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors ml-1"
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        {migratedCount} migrated (stale)
+                      </button>
+                    )}
+                    {migratedOpen && (
+                      <button
+                        onClick={handleOfflineClick}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors ml-1"
+                      >
+                        ← {offlineCount} offline
+                      </button>
+                    )}
                   </div>
                   <button
                     onClick={closeDetail}
