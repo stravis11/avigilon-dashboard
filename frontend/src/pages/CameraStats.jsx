@@ -166,14 +166,25 @@ const CameraStats = () => {
     ? { text: 'text-yellow-600 dark:text-yellow-400', bar: '#eab308', border: 'border-yellow-200 dark:border-yellow-800' }
     : { text: 'text-red-600 dark:text-red-400', bar: '#ef4444', border: 'border-red-200 dark:border-red-800' };
 
-  // Base pool for manufacturer/model breakdowns — filter to offline cameras when an offline panel is active
+  // Base pool for manufacturer/model breakdowns — filter when an online/offline panel is active
   const mfrPoolBase = (() => {
+    if (viewsOnlineOpen) {
+      return nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED');
+    }
+    if (devicesOnlineOpen) {
+      const seen = new Set();
+      return nonMigratedCameras.filter(c => {
+        if (c.connectionState !== 'CONNECTED') return false;
+        const k = deviceKey(c);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
     if (offlineOpen) {
-      // views offline: all disconnected non-migrated cameras
       return nonMigratedCameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
     }
     if (devicesOfflineOpen) {
-      // devices offline: one entry per unique device IP that is offline
       const seen = new Set();
       return nonMigratedCameras.filter(c => {
         if (c.connectionState === 'CONNECTED') return false;
@@ -239,7 +250,13 @@ const CameraStats = () => {
     const modelIdx = mfrModelBreakdown.findIndex(([m]) => m === selectedModel);
     detailDotColor = COLORS[modelIdx % COLORS.length];
     let base = mfrCameras.filter(c => (c.model || c.deviceModel || 'Unknown') === selectedModel);
-    if (offlineOpen || devicesOfflineOpen) {
+    if (viewsOnlineOpen) {
+      base = base.filter(c => c.connectionState === 'CONNECTED');
+    } else if (devicesOnlineOpen) {
+      base = base.filter(c => c.connectionState === 'CONNECTED');
+      const seen = new Set();
+      base = base.filter(c => { const k = deviceKey(c); if (seen.has(k)) return false; seen.add(k); return true; });
+    } else if (offlineOpen || devicesOfflineOpen) {
       base = base.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
       if (devicesOfflineOpen) {
         const seen = new Set();
@@ -359,9 +376,7 @@ const CameraStats = () => {
       setSelectedMfr(mfr);
       setSelectedGen(null);
       setSelectedModel(null);
-      setViewsOnlineOpen(false);
-      setDevicesOnlineOpen(false);
-      // preserve offlineOpen / devicesOfflineOpen so model drill-down stays in offline context
+      // preserve online/offline context so model drill-down stays filtered
       setMigratedOpen(false);
     }
   };
