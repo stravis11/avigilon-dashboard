@@ -100,10 +100,49 @@ const CameraStats = () => {
   // Reset sort to IP when detail view changes
   useEffect(() => { setSortCol('ip'); setSortDir('asc'); }, [offlineOpen, devicesOfflineOpen, migratedOpen, devicesOnlineOpen, viewsOnlineOpen, selectedModel]);
 
+  const pctText = (count, total) => total > 0 ? `${((count / total) * 100).toFixed(2)}%` : '0.00%';
+
+  const getExportData = () => {
+    const selectedBreakdownTotal = mfrPoolBase.length;
+    const selectedDetail = detailCameras.length > 0 ? detailCameras : mfrPoolBase;
+
+    const selectedReport = (title, selectedLabel, selectedCount, totalLabel, totalCount) => ({
+      cameras: mfrPoolBase,
+      filteredCount: selectedBreakdownTotal,
+      offlineCount: 0,
+      mfrBreakdown,
+      servers,
+      reportTitle: `Camera Statistics Report - ${title}`,
+      reportSubtitle: `${selectedCount} of ${totalCount} ${selectedLabel.toLowerCase()}`,
+      summaryRows: [
+        [selectedLabel, selectedCount, pctText(selectedCount, totalCount)],
+        [totalLabel, totalCount, '100.00%'],
+      ],
+      breakdownTotal: selectedBreakdownTotal,
+      detailTitle: `${title} (${selectedDetail.length})`,
+      detailCameras: selectedDetail,
+    });
+
+    if (viewsOnlineOpen) {
+      return selectedReport('Camera Views Online', 'Camera Views Online', onlineCount, 'Total Active Camera Views', filteredCount);
+    }
+    if (devicesOnlineOpen) {
+      return selectedReport('Camera Devices Online', 'Camera Devices Online', onlineDevices, 'Total Active Camera Devices', totalDevices);
+    }
+    if (offlineOpen) {
+      return selectedReport('Camera Views Offline', 'Camera Views Offline', offlineCount, 'Total Active Camera Views', filteredCount);
+    }
+    if (devicesOfflineOpen) {
+      return selectedReport('Camera Devices Offline', 'Camera Devices Offline', offlineDeviceCount, 'Total Active Camera Devices', totalDevices);
+    }
+
+    return { cameras, filteredCount, offlineCount, mfrBreakdown, servers };
+  };
+
   const handleExport = async (format) => {
     setExportOpen(false);
     setExporting(format);
-    const data = { cameras, filteredCount, offlineCount, mfrBreakdown, servers };
+    const data = getExportData();
     try {
       if (format === 'csv') exportCSV(data);
       else await exportPDF(data);

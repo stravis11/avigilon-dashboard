@@ -12,18 +12,26 @@ const getIp = (camera) => (camera.ipAddress || camera.ip || camera.address || ''
 
 const normalizeMfr = (mfr) => (mfr || 'Unknown').replace(/\s*\(ONVIF\)\s*$/i, '').trim() || 'Unknown';
 
+const deviceKey = (camera) => {
+  const ip = getIp(camera);
+  return ip && ip !== 'N/A' ? ip : camera.id;
+};
+
 /** Build per-manufacturer model breakdown: { mfrName: [[model, count], ...] } */
 const buildMfrModelData = (cameras, mfrBreakdown) => {
   const result = {};
   mfrBreakdown.forEach(([mfr]) => {
-    const counts = {};
+    const modelKeys = {};
     cameras
       .filter(c => normalizeMfr(c.manufacturer) === mfr)
       .forEach(c => {
         const model = c.model || c.deviceModel || 'Unknown';
-        counts[model] = (counts[model] || 0) + 1;
+        if (!modelKeys[model]) modelKeys[model] = new Set();
+        modelKeys[model].add(deviceKey(c));
       });
-    result[mfr] = Object.entries(counts).sort(([, a], [, b]) => b - a);
+    result[mfr] = Object.entries(modelKeys)
+      .map(([model, keys]) => [model, keys.size])
+      .sort(([, a], [, b]) => b - a);
   });
   return result;
 };
@@ -33,10 +41,24 @@ const filename = (ext) => `camera-statistics-${new Date().toISOString().slice(0,
 
 // ── CSV ───────────────────────────────────────────────────────────────────────
 
-export const exportCSV = ({ cameras, filteredCount, offlineCount, mfrBreakdown, servers }) => {
+export const exportCSV = ({
+  cameras,
+  filteredCount,
+  offlineCount,
+  mfrBreakdown,
+  servers,
+  reportTitle = 'Camera Statistics Report',
+  reportSubtitle = `${filteredCount} active cameras`,
+  summaryRows,
+  breakdownTotal = filteredCount,
+  detailTitle,
+  detailCameras,
+}) => {
   const onlineCount = filteredCount - offlineCount;
   const mfrModelData = buildMfrModelData(cameras, mfrBreakdown);
   const offlineCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+  const detailRows = detailCameras || offlineCameras;
+  const detailHeading = detailTitle || (offlineCameras.length > 0 ? `Offline Cameras (${offlineCameras.length})` : null);
   const getServerName = (id) => servers.find(s => s.id === id)?.name || 'N/A';
 
   const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -44,39 +66,42 @@ export const exportCSV = ({ cameras, filteredCount, offlineCount, mfrBreakdown, 
   const blank = () => '';
 
   const lines = [
-    row('Camera Statistics Report'),
+    row(reportTitle),
     row(`Generated: ${new Date().toLocaleString()}`),
+    row(reportSubtitle),
     blank(),
 
     row('SUMMARY'),
     row('Metric', 'Count', 'Percentage'),
-    row('Total Active Cameras', filteredCount, '100.00%'),
-    row('Cameras Online', onlineCount, pct(onlineCount, filteredCount)),
-    row('Cameras Offline', offlineCount, pct(offlineCount, filteredCount)),
+    ...(summaryRows || [
+      ['Total Active Cameras', filteredCount, '100.00%'],
+      ['Cameras Online', onlineCount, pct(onlineCount, filteredCount)],
+      ['Cameras Offline', offlineCount, pct(offlineCount, filteredCount)],
+    ]).map(([label, count, percentage]) => row(label, count, percentage)),
     blank(),
 
     row('BY MANUFACTURER'),
     row('Manufacturer', 'Camera Count', '% of Fleet'),
-    ...mfrBreakdown.map(([mfr, count]) => row(mfr, count, pct(count, filteredCount))),
+    ...mfrBreakdown.map(([mfr, count]) => row(mfr, count, pct(count, breakdownTotal))),
     blank(),
 
     row('BY MODEL'),
     row('Manufacturer', 'Model', 'Count', '% of Manufacturer', '% of Fleet'),
     ...mfrBreakdown.flatMap(([mfr, mfrCount]) =>
       (mfrModelData[mfr] || []).map(([model, count]) =>
-        row(mfr, model, count, pct(count, mfrCount), pct(count, filteredCount))
+        row(mfr, model, count, pct(count, mfrCount), pct(count, breakdownTotal))
       )
     ),
   ];
 
-  if (offlineCameras.length > 0) {
+  if (detailHeading && detailRows.length > 0) {
     lines.push(
       blank(),
-      row(`OFFLINE CAMERAS (${offlineCameras.length})`),
+      row(detailHeading.toUpperCase()),
       row('Name', 'Status', 'IP Address', 'Model', 'Manufacturer', 'Server'),
-      ...offlineCameras.map(c =>
+      ...detailRows.map(c =>
         row(
-          c.name || c.deviceName || 'Unnamed',
+          c._displayName || c.name || c.deviceName || 'Unnamed',
           c.connectionState || 'Unknown',
           getIp(c),
           c.model || c.deviceModel || 'N/A',
@@ -100,7 +125,19 @@ export const exportCSV = ({ cameras, filteredCount, offlineCount, mfrBreakdown, 
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
 
-export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreakdown, servers }) => {
+export const exportPDF = async ({
+  cameras,
+  filteredCount,
+  offlineCount,
+  mfrBreakdown,
+  servers,
+  reportTitle = 'Camera Statistics Report',
+  reportSubtitle = `${filteredCount} active cameras`,
+  summaryRows,
+  breakdownTotal = filteredCount,
+  detailTitle,
+  detailCameras,
+}) => {
   // Lazy-load heavy PDF libraries only when needed
   const { default: jsPDF } = await import('jspdf');
   await import('jspdf-autotable');
@@ -108,6 +145,8 @@ export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreak
   const onlineCount = filteredCount - offlineCount;
   const mfrModelData = buildMfrModelData(cameras, mfrBreakdown);
   const offlineCameras = cameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
+  const detailRows = detailCameras || offlineCameras;
+  const detailHeading = detailTitle || (offlineCameras.length > 0 ? `Offline Cameras (${offlineCameras.length})` : null);
   const getServerName = (id) => servers.find(s => s.id === id)?.name || 'N/A';
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -165,12 +204,12 @@ export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreak
   doc.setTextColor(...WHITE);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text('Camera Statistics Report', margin, 13);
+  doc.text(reportTitle, margin, 13);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 21);
-  doc.text(`${filteredCount} active cameras`, margin, 26);
+  doc.text(reportSubtitle, margin, 26);
 
   y = 38;
   doc.setTextColor(0, 0, 0);
@@ -179,7 +218,7 @@ export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreak
   sectionHeading('Summary');
   addTable({
     head: [['Metric', 'Count', 'Percentage']],
-    body: [
+    body: summaryRows || [
       ['Total Active Cameras', filteredCount, '100.00%'],
       ['Cameras Online', onlineCount, pct(onlineCount, filteredCount)],
       ['Cameras Offline', offlineCount, pct(offlineCount, filteredCount)],
@@ -198,7 +237,7 @@ export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreak
   sectionHeading('By Manufacturer');
   addTable({
     head: [['Manufacturer', 'Camera Count', '% of Fleet']],
-    body: mfrBreakdown.map(([mfr, count]) => [mfr, count, pct(count, filteredCount)]),
+    body: mfrBreakdown.map(([mfr, count]) => [mfr, count, pct(count, breakdownTotal)]),
     columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' } },
   });
 
@@ -206,7 +245,7 @@ export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreak
   sectionHeading('By Model');
   const modelRows = mfrBreakdown.flatMap(([mfr, mfrCount]) =>
     (mfrModelData[mfr] || []).map(([model, count]) => [
-      mfr, model, count, pct(count, mfrCount), pct(count, filteredCount),
+      mfr, model, count, pct(count, mfrCount), pct(count, breakdownTotal),
     ])
   );
 
@@ -233,19 +272,20 @@ export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreak
   });
 
   // ── Offline Cameras ────────────────────────────────────────────────────────
-  if (offlineCameras.length > 0) {
-    sectionHeading(`Offline Cameras (${offlineCameras.length})`);
+  if (detailHeading && detailRows.length > 0) {
+    sectionHeading(detailHeading);
     addTable({
-      head: [['Name', 'IP Address', 'Model', 'Manufacturer', 'Server']],
-      body: offlineCameras.map(c => [
-        c.name || c.deviceName || 'Unnamed',
+      head: [['Name', 'Status', 'IP Address', 'Model', 'Manufacturer', 'Server']],
+      body: detailRows.map(c => [
+        c._displayName || c.name || c.deviceName || 'Unnamed',
+        c.connectionState || 'Unknown',
         getIp(c),
         c.model || c.deviceModel || 'N/A',
         normalizeMfr(c.manufacturer),
         getServerName(c.serverId),
       ]),
-      headStyles: { fillColor: RED, textColor: WHITE, fontStyle: 'bold', fontSize: 8.5 },
-      alternateRowStyles: { fillColor: RED_LIGHT },
+      headStyles: { fillColor: detailTitle ? BLUE : RED, textColor: WHITE, fontStyle: 'bold', fontSize: 8.5 },
+      alternateRowStyles: { fillColor: detailTitle ? GRAY_LIGHT : RED_LIGHT },
     });
   }
 
