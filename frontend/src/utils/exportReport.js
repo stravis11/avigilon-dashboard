@@ -28,7 +28,7 @@ const buildMfrModelData = (cameras, mfrBreakdown) => {
   return result;
 };
 
-const pct = (n, total) => total > 0 ? `${Math.round((n / total) * 100)}%` : '0%';
+const pct = (n, total) => total > 0 ? `${((n / total) * 100).toFixed(2)}%` : '0.00%';
 const filename = (ext) => `camera-statistics-${new Date().toISOString().slice(0, 10)}.${ext}`;
 
 // ── CSV ───────────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export const exportCSV = ({ cameras, filteredCount, offlineCount, mfrBreakdown, 
 
     row('SUMMARY'),
     row('Metric', 'Count', 'Percentage'),
-    row('Total Active Cameras', filteredCount, '100%'),
+    row('Total Active Cameras', filteredCount, '100.00%'),
     row('Cameras Online', onlineCount, pct(onlineCount, filteredCount)),
     row('Cameras Offline', offlineCount, pct(offlineCount, filteredCount)),
     blank(),
@@ -180,7 +180,7 @@ export const exportPDF = async ({ cameras, filteredCount, offlineCount, mfrBreak
   addTable({
     head: [['Metric', 'Count', 'Percentage']],
     body: [
-      ['Total Active Cameras', filteredCount, '100%'],
+      ['Total Active Cameras', filteredCount, '100.00%'],
       ['Cameras Online', onlineCount, pct(onlineCount, filteredCount)],
       ['Cameras Offline', offlineCount, pct(offlineCount, filteredCount)],
     ],
