@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Camera, RefreshCw, AlertCircle, X, ChevronUp, ChevronDown, ImageOff, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Camera, RefreshCw, AlertCircle, X, ChevronUp, ChevronDown, ImageOff, Search, ChevronLeft, ChevronRight, List, LayoutGrid } from 'lucide-react';
 import apiService from '../services/apiService';
 import LiveStreamModal from '../components/LiveStreamModal';
 import { useCameraData } from '../context/CameraDataContext';
@@ -7,9 +7,16 @@ import { useCameraData } from '../context/CameraDataContext';
 const STANDBY_SERVERS = ['GTPDACCSERVER10', 'GTPDACCSERVER3'];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
 const DEFAULT_PAGE_SIZE = 50;
+const GRID_SIZE_OPTIONS = [3, 4, 5, 6];
+const GRID_COLUMN_CLASSES = {
+  3: 'lg:grid-cols-3 xl:grid-cols-3',
+  4: 'lg:grid-cols-3 xl:grid-cols-4',
+  5: 'lg:grid-cols-4 xl:grid-cols-5',
+  6: 'lg:grid-cols-4 xl:grid-cols-6',
+};
 
 // Thumbnail component with lazy loading and staggered requests
-const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick }) => {
+const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick, className = 'w-16 h-11 sm:w-20 sm:h-14' }) => {
   const [status, setStatus] = useState('idle'); // idle, waiting, loading, loaded, error
   const [shouldLoad, setShouldLoad] = useState(false);
   const [imageSrc, setImageSrc] = useState(null);
@@ -65,7 +72,7 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick }) => {
   }, [shouldLoad, cameraId]);
 
   return (
-    <div ref={containerRef} className="w-16 h-11 sm:w-20 sm:h-14 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden relative group">
+    <div ref={containerRef} className={`${className} bg-gray-200 dark:bg-gray-700 rounded overflow-hidden relative group`}>
       {(status === 'idle' || status === 'loading') && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="animate-pulse bg-gray-300 dark:bg-gray-600 w-full h-full"></div>
@@ -97,6 +104,72 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick }) => {
           </span>
         </button>
       )}
+    </div>
+  );
+};
+
+const CameraGridCard = ({ camera, index, getServerName, onCameraClick, onLiveClick, showInfo }) => {
+  const isConnected = camera.connectionState === 'CONNECTED';
+  const cameraName = camera.name || camera.deviceName || 'Unnamed Camera';
+  const model = camera.model || camera.deviceModel || 'N/A';
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onCameraClick(camera)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onCameraClick(camera);
+        }
+      }}
+      className="group text-left bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm dark:shadow-gray-900/30 overflow-hidden hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md dark:hover:shadow-blue-950/20 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+    >
+      <CameraThumbnail
+        cameraId={camera.id}
+        cameraName={cameraName}
+        index={index}
+        onLiveClick={() => onLiveClick(camera)}
+        className="w-full aspect-video rounded-none"
+      />
+
+      <div className={`${showInfo ? 'p-4 space-y-3' : 'p-3'}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white leading-5 line-clamp-2">
+              {cameraName}
+            </h3>
+            {showInfo && camera.deviceName && camera.deviceName !== camera.name && (
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate">
+                {camera.deviceName}
+              </p>
+            )}
+          </div>
+          {showInfo && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${
+              isConnected
+                ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-400'
+                : 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-400'
+            }`}>
+              {camera.connectionState || 'Unknown'}
+            </span>
+          )}
+        </div>
+
+        {showInfo && (
+          <dl className="grid grid-cols-[auto,minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+            <dt className="text-gray-500 dark:text-gray-400">IP</dt>
+            <dd className="text-gray-700 dark:text-gray-300 font-mono truncate">{getIpAddress(camera)}</dd>
+            <dt className="text-gray-500 dark:text-gray-400">MAC</dt>
+            <dd className="text-gray-700 dark:text-gray-300 font-mono truncate">{getMacAddress(camera)}</dd>
+            <dt className="text-gray-500 dark:text-gray-400">Model</dt>
+            <dd className="text-gray-700 dark:text-gray-300 truncate">{model}</dd>
+            <dt className="text-gray-500 dark:text-gray-400">Server</dt>
+            <dd className="text-gray-700 dark:text-gray-300 truncate">{getServerName(camera.serverId)}</dd>
+          </dl>
+        )}
+      </div>
     </div>
   );
 };
@@ -179,6 +252,9 @@ const Cameras = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [liveStreamCamera, setLiveStreamCamera] = useState(null);
+  const [viewMode, setViewMode] = useState('list');
+  const [showGridInfo, setShowGridInfo] = useState(true);
+  const [gridSize, setGridSize] = useState(4);
 
   // Derive active cameras (exclude standby servers)
   const { cameras, totalCount, filteredCount, offlineCount } = useMemo(() => {
@@ -311,7 +387,7 @@ const Cameras = () => {
   // Reset to page 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, showOfflineOnly]);
+  }, [searchQuery, showOfflineOnly, viewMode]);
 
   // Ensure current page is valid when data changes
   useEffect(() => {
@@ -323,6 +399,11 @@ const Cameras = () => {
   // Handle page size change
   const handlePageSizeChange = (newSize) => {
     setPageSize(newSize);
+    setCurrentPage(1);
+  };
+
+  const handleGridSizeChange = (newSize) => {
+    setGridSize(newSize);
     setCurrentPage(1);
   };
 
@@ -373,13 +454,43 @@ const Cameras = () => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={loadCameras}
-              className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
-            >
-              <RefreshCw className="h-4 w-4" />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    viewMode === 'list'
+                      ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                  aria-pressed={viewMode === 'list'}
+                >
+                  <List className="h-4 w-4" />
+                  <span className="hidden sm:inline">List</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    viewMode === 'grid'
+                      ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                  aria-pressed={viewMode === 'grid'}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  <span className="hidden sm:inline">Grid</span>
+                </button>
+              </div>
+              <button
+                onClick={loadCameras}
+                className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            </div>
           </div>
           {/* Search Bar */}
           <div className="mt-4">
@@ -428,8 +539,141 @@ const Cameras = () => {
           </div>
         )}
 
-        {/* Cameras Table */}
+        {/* Cameras */}
         {sortedCameras.length > 0 && (
+          viewMode === 'grid' ? (
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 px-4 py-3 border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={showGridInfo}
+                    onChange={(e) => setShowGridInfo(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
+                  />
+                  Camera info
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Grid</span>
+                  <select
+                    value={gridSize}
+                    onChange={(e) => handleGridSizeChange(Number(e.target.value))}
+                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {GRID_SIZE_OPTIONS.map(size => (
+                      <option key={size} value={size}>{size}x{size}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                {gridSize} columns on wide screens
+              </div>
+            </div>
+
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${GRID_COLUMN_CLASSES[gridSize]} gap-4`}>
+              {paginatedCameras.map((camera, index) => (
+                <CameraGridCard
+                  key={camera.id}
+                  camera={camera}
+                  index={startIndex + index}
+                  getServerName={getServerName}
+                  onCameraClick={handleCameraClick}
+                  onLiveClick={setLiveStreamCamera}
+                  showInfo={showGridInfo}
+                />
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 px-4 py-3 border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Page size selector */}
+              <div className="hidden sm:flex items-center space-x-2">
+                <span className="text-sm text-gray-500 dark:text-gray-400">Show</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {PAGE_SIZE_OPTIONS.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-500 dark:text-gray-400">per page</span>
+              </div>
+
+              {/* Page info */}
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                Showing {startIndex + 1} to {Math.min(endIndex, sortedCameras.length)} of {sortedCameras.length} cameras
+              </div>
+
+              {/* Page navigation */}
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="hidden sm:inline-block px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
+                >
+                  First
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+
+                {/* Page numbers */}
+                <div className="flex items-center space-x-1">
+                  {(() => {
+                    const pages = [];
+                    const maxVisible = 5;
+                    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                    let end = Math.min(totalPages, start + maxVisible - 1);
+
+                    if (end - start + 1 < maxVisible) {
+                      start = Math.max(1, end - maxVisible + 1);
+                    }
+
+                    for (let i = start; i <= end; i++) {
+                      pages.push(
+                        <button
+                          key={i}
+                          onClick={() => setCurrentPage(i)}
+                          className={`px-3 py-1 text-sm border rounded transition-colors ${
+                            currentPage === i
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          {i}
+                        </button>
+                      );
+                    }
+                    return pages;
+                  })()}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="hidden sm:inline-block px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 transition-colors"
+                >
+                  Last
+                </button>
+              </div>
+            </div>
+          </div>
+          ) : (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 overflow-hidden transition-colors duration-300">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -591,7 +835,7 @@ const Cameras = () => {
               </div>
             </div>
           </div>
-        )}
+        ))}
 
         {/* Empty State */}
         {sortedCameras.length === 0 && !loading && !error && (
