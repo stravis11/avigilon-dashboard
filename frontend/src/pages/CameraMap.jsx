@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Camera, MapPin, Play, RefreshCw, Search, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertCircle, Camera, HelpCircle, MapPin, Play, RefreshCw, Search, Wifi, WifiOff, X } from 'lucide-react';
 import ArcGISMap from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
 import Graphic from '@arcgis/core/Graphic';
@@ -79,6 +79,7 @@ const CameraMap = () => {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [qualityPanel, setQualityPanel] = useState(null);
+  const [summaryHelp, setSummaryHelp] = useState(null);
   const [searchControlPosition, setSearchControlPosition] = useState({ x: 72, y: 16 });
   const [isDraggingSearch, setIsDraggingSearch] = useState(false);
 
@@ -299,19 +300,29 @@ const CameraMap = () => {
   const accOnlyCameras = mapData?.accOnlyCameras || [];
 
   const summaryItems = [
-    { label: 'Locations', value: summary.markers ?? 0 },
-    { label: 'Matched', value: summary.matchedMarkers ?? 0 },
+    {
+      label: 'Locations',
+      value: summary.markers ?? 0,
+      help: 'ArcGIS map points currently shown as camera locations. ArcGIS is the source of truth for these locations.',
+    },
+    {
+      label: 'Matched',
+      value: summary.matchedMarkers ?? 0,
+      help: 'ArcGIS locations that matched one or more ACC camera views by IP address.',
+    },
     {
       label: 'Unmatched',
       value: summary.unmatchedArcgis ?? 0,
       panel: 'unmatched',
       title: 'ArcGIS Points Without ACC Matches',
+      help: 'ArcGIS camera points with an IP address that did not match any current ACC camera. These stay on the map as warnings.',
     },
     {
       label: 'Missing from ArcGIS',
       value: summary.accOnlyCameras ?? 0,
       panel: 'missing',
       title: 'ACC Cameras Missing From ArcGIS',
+      help: 'ACC cameras that exist in Avigilon but do not have a matching ArcGIS point, so they are counted here but omitted from the map.',
     },
   ];
 
@@ -373,34 +384,56 @@ const CameraMap = () => {
               {summaryItems.map((item) => {
                 const isInteractive = Boolean(item.panel);
                 const isActive = qualityPanel === item.panel;
-                const content = (
-                  <>
-                    <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">{item.label}</div>
-                    <div className="text-2xl font-bold text-gray-900 dark:text-white">{item.value}</div>
-                  </>
+                const isHelpOpen = summaryHelp === item.label;
+                const cardTone = isActive ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-white dark:bg-gray-800';
+                const itemContent = (
+                  <div className={`relative px-4 py-3 ${cardTone}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">{item.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSummaryHelp(current => (current === item.label ? null : item.label))}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        aria-label={`What ${item.label} means`}
+                        aria-expanded={isHelpOpen}
+                      >
+                        <HelpCircle className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    {isInteractive ? (
+                      <button
+                        type="button"
+                        onClick={() => setQualityPanel(current => (current === item.panel ? null : item.panel))}
+                        className="mt-1 text-left text-2xl font-bold text-gray-900 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white dark:hover:text-blue-300"
+                        aria-pressed={isActive}
+                        title={item.title}
+                      >
+                        {item.value}
+                      </button>
+                    ) : (
+                      <div className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{item.value}</div>
+                    )}
+                    {isHelpOpen && (
+                      <div className="absolute left-3 right-3 top-12 z-30 rounded-md border border-gray-200 bg-white p-3 text-xs leading-5 text-gray-700 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                        {item.help}
+                      </div>
+                    )}
+                  </div>
                 );
 
                 if (!isInteractive) {
                   return (
-                    <div key={item.label} className="bg-white dark:bg-gray-800 px-4 py-3">
-                      {content}
-                    </div>
+                    <div key={item.label}>{itemContent}</div>
                   );
                 }
 
                 return (
-                  <button
+                  <div
                     key={item.label}
-                    type="button"
-                    onClick={() => setQualityPanel(current => (current === item.panel ? null : item.panel))}
-                    className={`bg-white dark:bg-gray-800 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors ${
-                      isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                    }`}
-                    aria-pressed={isActive}
-                    title={item.title}
+                    className="transition-colors"
                   >
-                    {content}
-                  </button>
+                    {itemContent}
+                  </div>
                 );
               })}
             </div>
