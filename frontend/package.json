@@ -10,6 +10,7 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@arcgis/core": "^5.0.19",
     "axios": "^1.6.2",
     "dashjs": "^5.1.1",
     "jspdf": "^2.5.1",

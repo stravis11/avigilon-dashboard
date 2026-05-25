@@ -100,6 +100,10 @@ const apiService = {
   // Dashboard
   getDashboardStats: () => apiClient.get('/dashboard/stats'),
 
+  // Camera map (ArcGIS-backed, read-only)
+  getCameraMap: () => apiClient.get('/map/cameras'),
+  refreshCameraMap: () => apiClient.post('/map/refresh'),
+
   // Cloud API (Hardware Health Monitoring)
   getCloudStatus: () => apiClient.get('/cloud/status'),
   setCloudToken: (token) => apiClient.post('/cloud/token', { token }),

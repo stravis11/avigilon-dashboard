@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Camera, BarChart2, Users, Cloud, LogOut, Menu, X, User, Settings, KeyRound, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Camera, BarChart2, Users, Cloud, LogOut, Menu, X, User, Settings, KeyRound, ChevronDown, MapPin } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Cameras from './pages/Cameras';
 import CameraStats from './pages/CameraStats';
@@ -13,6 +13,8 @@ import { CameraDataProvider } from './context/CameraDataContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ThemeToggle from './components/ThemeToggle';
 import ProfileModal from './components/ProfileModal';
+
+const CameraMap = lazy(() => import('./pages/CameraMap'));
 
 const Navigation = () => {
   const location = useLocation();
@@ -47,6 +49,7 @@ const Navigation = () => {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/cameras', label: 'Cameras', icon: Camera },
     { path: '/camera-stats', label: 'Camera Stats', icon: BarChart2 },
+    { path: '/map', label: 'Map', icon: MapPin },
     { path: '/cloud', label: 'Cloud', icon: Cloud },
   ];
 
@@ -256,6 +259,23 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <CameraStats />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/map"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={
+                  <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                      <p className="mt-4 text-gray-600 dark:text-gray-400">Loading map...</p>
+                    </div>
+                  </div>
+                }>
+                  <CameraMap />
+                </Suspense>
               </ProtectedRoute>
             }
           />

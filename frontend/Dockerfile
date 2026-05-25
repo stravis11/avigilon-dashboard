@@ -3,6 +3,9 @@ FROM node:18-alpine AS build
 
 WORKDIR /app
 
+# ArcGIS SDK bundling needs more than Node's default build heap.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
 # Copy package files
 COPY package*.json ./
 

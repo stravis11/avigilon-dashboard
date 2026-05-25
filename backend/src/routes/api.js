@@ -61,6 +61,13 @@ import {
   generateZabbixImport,
 } from '../controllers/zabbixController.js';
 
+import {
+  getCameraMap,
+  refreshCameraMap,
+} from '../controllers/mapController.js';
+
+import { requireAdmin } from '../middleware/authMiddleware.js';
+
 const router = express.Router();
 
 // Local health check (no ACC connection)
@@ -117,6 +124,10 @@ router.get('/events/search', searchEvents);
 
 // Dashboard
 router.get('/dashboard/stats', getDashboardStats);
+
+// Camera map (ArcGIS read-only feed)
+router.get('/map/cameras', getCameraMap);
+router.post('/map/refresh', requireAdmin, refreshCameraMap);
 
 // Cache management
 router.post('/cache/refresh', refreshCache);
