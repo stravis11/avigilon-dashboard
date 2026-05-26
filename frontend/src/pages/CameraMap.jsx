@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Camera, HelpCircle, MapPin, Play, RefreshCw, Search, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertCircle, Camera, ChevronDown, ChevronUp, HelpCircle, MapPin, Play, RefreshCw, Search, Wifi, WifiOff, X } from 'lucide-react';
 import ArcGISMap from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
 import Graphic from '@arcgis/core/Graphic';
@@ -51,21 +51,25 @@ const CAMERA_LAYERS = {
   },
 };
 
-const getCameraSymbol = (color) => {
+const getCameraSymbol = (color, directionDegrees) => {
   const [r, g, b] = color;
   const fill = `rgb(${r}, ${g}, ${b})`;
+  const angle = Number(directionDegrees);
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-      <circle cx="16" cy="16" r="14" fill="${fill}" stroke="white" stroke-width="3"/>
-      <path d="M9 12.5h9.5l2.5 2V13h2.5v7H21v-1.5l-2.5 2H9z" fill="white"/>
-      <circle cx="14.5" cy="16.5" r="2.25" fill="${fill}"/>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">
+      <g fill="${fill}" stroke="white" stroke-width="2" stroke-linejoin="round">
+        <path d="M8.5 10.5h11c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2h-11c-1.1 0-2-.9-2-2v-9c0-1.1.9-2 2-2z"/>
+        <path d="M10.5 10.5 14 3.5l3.5 7z"/>
+      </g>
+      <circle cx="14" cy="17" r="2.3" fill="white"/>
     </svg>
   `;
   return {
     type: 'picture-marker',
     url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    width: 24,
-    height: 24,
+    width: 16,
+    height: 16,
+    angle: Number.isFinite(angle) ? angle : 0,
   };
 };
 
@@ -110,6 +114,7 @@ const CameraMap = () => {
   const [qualityPanel, setQualityPanel] = useState(null);
   const [summaryHelp, setSummaryHelp] = useState(null);
   const [visibleLayers, setVisibleLayers] = useState({ interior: true, exterior: true });
+  const [isLayerControlExpanded, setIsLayerControlExpanded] = useState(true);
   const [searchControlPosition, setSearchControlPosition] = useState({ x: 72, y: 16 });
   const [isDraggingSearch, setIsDraggingSearch] = useState(false);
 
@@ -214,8 +219,14 @@ const CameraMap = () => {
     viewRef.current = view;
     layerRef.current = graphicsLayer;
 
+    const resizeObserver = new ResizeObserver(() => {
+      view.resize();
+    });
+    resizeObserver.observe(mapDivRef.current);
+
     return () => {
       clickHandle.remove();
+      resizeObserver.disconnect();
       view.destroy();
       viewRef.current = null;
       layerRef.current = null;
@@ -228,40 +239,8 @@ const CameraMap = () => {
     const pointGraphics = [];
     const graphics = filteredMarkers
       .filter(marker => marker.coordinates)
-      .flatMap((marker) => {
+      .map((marker) => {
         const style = STATUS_STYLES[marker.status] || STATUS_STYLES.unmatched;
-        const direction = Number(marker.directionDegrees);
-        const hasDirection = Number.isFinite(direction);
-        const geometry = {
-          type: 'point',
-          longitude: marker.coordinates.longitude,
-          latitude: marker.coordinates.latitude,
-          spatialReference: { wkid: 4326 },
-        };
-        const markerGraphics = [];
-
-        if (hasDirection) {
-          markerGraphics.push(new Graphic({
-            geometry,
-            symbol: {
-              type: 'simple-marker',
-              style: 'triangle',
-              color: [...style.color, 0.35],
-              size: 24,
-              angle: direction,
-              yoffset: 12,
-              outline: {
-                color: [255, 255, 255, 0.9],
-                width: 1,
-              },
-            },
-            attributes: {
-              markerId: marker.id,
-              label: marker.label,
-            },
-          }));
-        }
-
         const pointGraphic = new Graphic({
           geometry: {
             type: 'point',
@@ -269,15 +248,14 @@ const CameraMap = () => {
             latitude: marker.coordinates.latitude,
             spatialReference: { wkid: 4326 },
           },
-          symbol: getCameraSymbol(style.color),
+          symbol: getCameraSymbol(style.color, marker.directionDegrees),
           attributes: {
             markerId: marker.id,
             label: marker.label,
           },
         });
         pointGraphics.push(pointGraphic);
-        markerGraphics.push(pointGraphic);
-        return markerGraphics;
+        return pointGraphic;
       });
 
     layerRef.current.removeAll();
@@ -512,7 +490,7 @@ const CameraMap = () => {
               })}
             </div>
 
-            <div className="relative h-[68vh] min-h-[520px]">
+            <div className="relative h-[calc(100vh-17rem)] min-h-[420px] max-h-[900px]">
               <div ref={mapDivRef} className="absolute inset-0" />
               <div
                 ref={searchControlRef}
@@ -559,36 +537,51 @@ const CameraMap = () => {
                   </div>
                 </div>
               )}
-              <div className="absolute right-4 top-4 z-10 w-64 rounded-lg border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
-                <div className="mb-2 flex items-center justify-between">
-                  <div>
+              <div className="absolute right-4 top-4 z-10 w-64 rounded-lg border border-gray-200 bg-white/95 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
+                <button
+                  type="button"
+                  onClick={() => setIsLayerControlExpanded(current => !current)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                  aria-expanded={isLayerControlExpanded}
+                  aria-label={isLayerControlExpanded ? 'Collapse map layers' : 'Expand map layers'}
+                >
+                  <div className="min-w-0">
                     <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Layers</h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">ArcGIS camera type groups</p>
+                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                      {Object.entries(CAMERA_LAYERS)
+                        .filter(([layer]) => visibleLayers[layer])
+                        .map(([, config]) => config.label.replace(' Cameras', ''))
+                        .join(', ') || 'None visible'}
+                    </p>
                   </div>
-                  <Camera className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="space-y-2">
-                  {Object.entries(CAMERA_LAYERS).map(([layer, config]) => (
-                    <label
-                      key={layer}
-                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/60"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleLayers[layer]}
-                        onChange={() => toggleLayer(layer)}
-                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{config.label}</span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">{layerCounts[layer]}</span>
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
+                    {isLayerControlExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </span>
+                </button>
+                {isLayerControlExpanded && (
+                  <div className="space-y-2 border-t border-gray-200 px-3 py-3 dark:border-gray-700">
+                    {Object.entries(CAMERA_LAYERS).map(([layer, config]) => (
+                      <label
+                        key={layer}
+                        className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/60"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleLayers[layer]}
+                          onChange={() => toggleLayer(layer)}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{config.label}</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">{layerCounts[layer]}</span>
+                          </span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">{config.description}</span>
                         </span>
-                        <span className="block text-xs text-gray-500 dark:text-gray-400">{config.description}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </section>
