@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Camera, ChevronDown, ChevronUp, HelpCircle, MapPin, Play, RefreshCw, Search, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertCircle, Camera, ChevronDown, ChevronUp, HelpCircle, ImageOff, MapPin, Play, RefreshCw, Search, Wifi, WifiOff, X } from 'lucide-react';
 import ArcGISMap from '@arcgis/core/Map';
 import MapView from '@arcgis/core/views/MapView';
 import Graphic from '@arcgis/core/Graphic';
@@ -101,6 +101,81 @@ const isRetiredValue = (value) => {
   if (value === true) return true;
   if (value === false || value === null || value === undefined) return false;
   return ['true', 'yes', 'y', '1', 'retired'].includes(String(value).trim().toLowerCase());
+};
+
+const CameraSnapshotPreview = ({ camera, onLiveClick }) => {
+  const [snapshotUrl, setSnapshotUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const cameraName = camera.name || camera.deviceName || 'Camera';
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = null;
+
+    setLoading(true);
+    setError(false);
+    setSnapshotUrl(null);
+
+    apiService.fetchCameraSnapshotBlob(camera.id)
+      .then((url) => {
+        if (!active) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setSnapshotUrl(url);
+      })
+      .catch(() => {
+        if (active) setError(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [camera.id]);
+
+  return (
+    <div className="group relative mt-3 aspect-video overflow-hidden rounded-md border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-900">
+      {loading && (
+        <div className="absolute inset-0 animate-pulse bg-gray-200 dark:bg-gray-700" />
+      )}
+
+      {!loading && error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-500 dark:text-gray-400">
+          <ImageOff className="h-6 w-6" />
+          <span className="text-xs font-medium">Snapshot unavailable</span>
+        </div>
+      )}
+
+      {snapshotUrl && !error && (
+        <img
+          src={snapshotUrl}
+          alt={`${cameraName} snapshot`}
+          className="h-full w-full object-cover"
+        />
+      )}
+
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onLiveClick();
+        }}
+        className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition focus:bg-black/45 focus:opacity-100 focus:outline-none group-hover:bg-black/45 group-hover:opacity-100"
+        aria-label={`Open live video for ${cameraName}`}
+      >
+        <span className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-sm font-medium shadow-lg transition-colors hover:bg-red-700">
+          <Play className="h-4 w-4" />
+          Live Video
+        </span>
+      </button>
+    </div>
+  );
 };
 
 const CameraMap = () => {
@@ -834,13 +909,10 @@ const CameraMap = () => {
                               {camera.connectionState}
                             </span>
                           </div>
-                          <button
-                            onClick={() => setLiveStreamCamera(camera)}
-                            className="mt-3 inline-flex items-center gap-2 w-full justify-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
-                          >
-                            <Play className="h-4 w-4" />
-                            Live Video
-                          </button>
+                          <CameraSnapshotPreview
+                            camera={camera}
+                            onLiveClick={() => setLiveStreamCamera(camera)}
+                          />
                         </div>
                       ))}
                     </div>
