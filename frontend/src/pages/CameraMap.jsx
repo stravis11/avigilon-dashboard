@@ -56,20 +56,29 @@ const getCameraSymbol = (color, directionDegrees) => {
   const fill = `rgb(${r}, ${g}, ${b})`;
   const angle = Number(directionDegrees);
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">
-      <g fill="${fill}" stroke="white" stroke-width="2" stroke-linejoin="round">
-        <path d="M8.5 10.5h11c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2h-11c-1.1 0-2-.9-2-2v-9c0-1.1.9-2 2-2z"/>
-        <path d="M10.5 10.5 14 3.5l3.5 7z"/>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+      <g fill="none" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 26v-5"/>
+        <path d="M11.5 26h9"/>
+        <path d="M8 14.5h15.5"/>
+        <path d="M23.5 14.5 28 10v9z"/>
       </g>
-      <circle cx="14" cy="17" r="2.3" fill="white"/>
+      <g fill="${fill}" stroke="${fill}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 26v-5"/>
+        <path d="M11.5 26h9"/>
+        <path d="M6.5 10.5h15c1.3 0 2.4 1.1 2.4 2.4v3.2c0 1.3-1.1 2.4-2.4 2.4h-15c-1.3 0-2.4-1.1-2.4-2.4v-3.2c0-1.3 1.1-2.4 2.4-2.4z"/>
+        <path d="M23.9 13.1 29 9.8v9.4l-5.1-3.3z"/>
+      </g>
+      <circle cx="10" cy="14.5" r="2.2" fill="white"/>
+      <circle cx="10" cy="14.5" r="1.1" fill="${fill}"/>
     </svg>
   `;
   return {
     type: 'picture-marker',
     url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    width: 16,
-    height: 16,
-    angle: Number.isFinite(angle) ? angle : 0,
+    width: 18,
+    height: 18,
+    angle: Number.isFinite(angle) ? angle - 90 : -90,
   };
 };
 
@@ -223,10 +232,13 @@ const CameraMap = () => {
       view.resize();
     });
     resizeObserver.observe(mapDivRef.current);
+    const handleWindowResize = () => view.resize();
+    window.addEventListener('resize', handleWindowResize);
 
     return () => {
       clickHandle.remove();
       resizeObserver.disconnect();
+      window.removeEventListener('resize', handleWindowResize);
       view.destroy();
       viewRef.current = null;
       layerRef.current = null;
@@ -409,7 +421,7 @@ const CameraMap = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="w-full px-3 sm:px-4 lg:px-5 py-4">
         {error && (
           <div className="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start">
             <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 mr-3 flex-shrink-0" />
@@ -430,7 +442,7 @@ const CameraMap = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_22rem] gap-4">
           <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow dark:shadow-gray-900/50 overflow-hidden">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-200 dark:bg-gray-700">
               {summaryItems.map((item) => {
@@ -490,7 +502,7 @@ const CameraMap = () => {
               })}
             </div>
 
-            <div className="relative h-[calc(100vh-17rem)] min-h-[420px] max-h-[900px]">
+            <div className="relative h-[calc(100vh-14.5rem)] min-h-[420px] max-h-none">
               <div ref={mapDivRef} className="absolute inset-0" />
               <div
                 ref={searchControlRef}
