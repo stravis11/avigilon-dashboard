@@ -40,6 +40,35 @@ const STATUS_STYLES = {
   },
 };
 
+const CAMERA_LAYERS = {
+  interior: {
+    label: 'Interior Cameras',
+    description: 'Interior Fixed, Interior PTZ, and Interior Fixed with Exterior View',
+  },
+  exterior: {
+    label: 'Exterior Cameras',
+    description: 'Exterior Fixed, Exterior PTZ, and Interior Fixed with Exterior View',
+  },
+};
+
+const getCameraSymbol = (color) => {
+  const [r, g, b] = color;
+  const fill = `rgb(${r}, ${g}, ${b})`;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+      <circle cx="16" cy="16" r="14" fill="${fill}" stroke="white" stroke-width="3"/>
+      <path d="M9 12.5h9.5l2.5 2V13h2.5v7H21v-1.5l-2.5 2H9z" fill="white"/>
+      <circle cx="14.5" cy="16.5" r="2.25" fill="${fill}"/>
+    </svg>
+  `;
+  return {
+    type: 'picture-marker',
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    width: 24,
+    height: 24,
+  };
+};
+
 const formatDateTime = (value) => {
   if (!value) return 'Never';
   return new Date(value).toLocaleString();
@@ -80,6 +109,7 @@ const CameraMap = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [qualityPanel, setQualityPanel] = useState(null);
   const [summaryHelp, setSummaryHelp] = useState(null);
+  const [visibleLayers, setVisibleLayers] = useState({ interior: true, exterior: true });
   const [searchControlPosition, setSearchControlPosition] = useState({ x: 72, y: 16 });
   const [isDraggingSearch, setIsDraggingSearch] = useState(false);
 
@@ -124,15 +154,22 @@ const CameraMap = () => {
     mapDataRef.current = mapData;
   }, [mapData]);
 
-  const filteredMarkers = useMemo(() => {
+  const layerFilteredMarkers = useMemo(() => {
     const markers = mapData?.markers || [];
+    return markers.filter(marker => (marker.layers || ['interior', 'exterior'])
+      .some(layer => visibleLayers[layer]));
+  }, [mapData, visibleLayers]);
+
+  const filteredMarkers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return markers;
-    return markers.filter((marker) => {
+    if (!query) return layerFilteredMarkers;
+    return layerFilteredMarkers.filter((marker) => {
       const values = [
         marker.label,
         marker.ip,
         marker.status,
+        marker.cameraType,
+        ...(marker.layers || []),
         ...Object.values(marker.arcgis?.attributes || {}),
         ...marker.cameras.flatMap(camera => [
           camera.name,
@@ -145,7 +182,7 @@ const CameraMap = () => {
       ];
       return values.some(value => value && String(value).toLowerCase().includes(query));
     });
-  }, [mapData, searchQuery, serverNames]);
+  }, [layerFilteredMarkers, searchQuery, serverNames]);
 
   useEffect(() => {
     if (!mapDivRef.current || viewRef.current) return;
@@ -188,32 +225,59 @@ const CameraMap = () => {
   useEffect(() => {
     if (!layerRef.current || !mapData) return;
 
+    const pointGraphics = [];
     const graphics = filteredMarkers
       .filter(marker => marker.coordinates)
-      .map((marker) => {
+      .flatMap((marker) => {
         const style = STATUS_STYLES[marker.status] || STATUS_STYLES.unmatched;
-        return new Graphic({
+        const direction = Number(marker.directionDegrees);
+        const hasDirection = Number.isFinite(direction);
+        const geometry = {
+          type: 'point',
+          longitude: marker.coordinates.longitude,
+          latitude: marker.coordinates.latitude,
+          spatialReference: { wkid: 4326 },
+        };
+        const markerGraphics = [];
+
+        if (hasDirection) {
+          markerGraphics.push(new Graphic({
+            geometry,
+            symbol: {
+              type: 'simple-marker',
+              style: 'triangle',
+              color: [...style.color, 0.35],
+              size: 24,
+              angle: direction,
+              yoffset: 12,
+              outline: {
+                color: [255, 255, 255, 0.9],
+                width: 1,
+              },
+            },
+            attributes: {
+              markerId: marker.id,
+              label: marker.label,
+            },
+          }));
+        }
+
+        const pointGraphic = new Graphic({
           geometry: {
             type: 'point',
             longitude: marker.coordinates.longitude,
             latitude: marker.coordinates.latitude,
             spatialReference: { wkid: 4326 },
           },
-          symbol: {
-            type: 'simple-marker',
-            style: marker.status === 'unmatched' ? 'triangle' : 'circle',
-            color: style.color,
-            size: marker.status === 'unmatched' ? 14 : 12,
-            outline: {
-              color: [255, 255, 255],
-              width: 2,
-            },
-          },
+          symbol: getCameraSymbol(style.color),
           attributes: {
             markerId: marker.id,
             label: marker.label,
           },
         });
+        pointGraphics.push(pointGraphic);
+        markerGraphics.push(pointGraphic);
+        return markerGraphics;
       });
 
     layerRef.current.removeAll();
@@ -222,13 +286,13 @@ const CameraMap = () => {
     if (!viewRef.current) return;
 
     const hasSearch = Boolean(searchQuery.trim());
-    if (hasSearch && graphics.length > 0) {
-      const target = graphics.length === 1
+    if (hasSearch && pointGraphics.length > 0) {
+      const target = pointGraphics.length === 1
         ? {
-          center: [graphics[0].geometry.longitude, graphics[0].geometry.latitude],
+          center: [pointGraphics[0].geometry.longitude, pointGraphics[0].geometry.latitude],
           zoom: 18,
         }
-        : graphics.map(graphic => graphic.geometry);
+        : pointGraphics.map(graphic => graphic.geometry);
       viewRef.current.goTo(target, { padding: 80 }).catch(() => {});
       return;
     }
@@ -298,6 +362,16 @@ const CameraMap = () => {
   const summary = mapData?.summary || {};
   const unmatchedMarkers = mapData?.unmatchedArcgis || [];
   const accOnlyCameras = mapData?.accOnlyCameras || [];
+  const layerCounts = {
+    interior: summary.interiorMarkers ?? 0,
+    exterior: summary.exteriorMarkers ?? 0,
+  };
+  const toggleLayer = (layer) => {
+    setVisibleLayers(current => ({
+      ...current,
+      [layer]: !current[layer],
+    }));
+  };
 
   const summaryItems = [
     {
@@ -485,6 +559,37 @@ const CameraMap = () => {
                   </div>
                 </div>
               )}
+              <div className="absolute right-4 top-4 z-10 w-64 rounded-lg border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Layers</h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">ArcGIS camera type groups</p>
+                  </div>
+                  <Camera className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="space-y-2">
+                  {Object.entries(CAMERA_LAYERS).map(([layer, config]) => (
+                    <label
+                      key={layer}
+                      className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/60"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleLayers[layer]}
+                        onChange={() => toggleLayer(layer)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{config.label}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{layerCounts[layer]}</span>
+                        </span>
+                        <span className="block text-xs text-gray-500 dark:text-gray-400">{config.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -651,6 +756,18 @@ const CameraMap = () => {
                         ? `${marker.cameras.length} camera view${marker.cameras.length === 1 ? '' : 's'}`
                         : 'No matching ACC camera'}
                     </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(marker.layers || []).map(layer => (
+                        <span key={layer} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                          {layer}
+                        </span>
+                      ))}
+                      {marker.directionDegrees !== null && marker.directionDegrees !== undefined && (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                          {marker.directionDegrees} deg
+                        </span>
+                      )}
+                    </div>
                   </button>
                 ))}
                 {filteredMarkers.length === 0 && (
@@ -672,6 +789,21 @@ const CameraMap = () => {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{selectedMarker.label}</h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400 font-mono">{selectedMarker.ip || 'No IP address'}</p>
+                    {selectedMarker.cameraType && (
+                      <p className="text-sm text-gray-600 dark:text-gray-300">{selectedMarker.cameraType}</p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(selectedMarker.layers || []).map(layer => (
+                        <span key={layer} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                          {layer}
+                        </span>
+                      ))}
+                      {selectedMarker.directionDegrees !== null && selectedMarker.directionDegrees !== undefined && (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                          Direction {selectedMarker.directionDegrees} deg
+                        </span>
+                      )}
+                    </div>
                     {selectedMarker.coordinates && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         {selectedMarker.coordinates.latitude.toFixed(6)}, {selectedMarker.coordinates.longitude.toFixed(6)}
