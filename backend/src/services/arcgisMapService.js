@@ -2,7 +2,7 @@ import axios from 'axios';
 import { logger } from '../utils/logger.js';
 import avigilonService from './avigilonServiceInstance.js';
 
-const DEFAULT_CACHE_TTL = 300000;
+const DEFAULT_CACHE_TTL = 60 * 60 * 1000;
 const PAGE_SIZE = 2000;
 const DEFAULT_CAMERA_TYPE_FIELD = 'Type_of_Camera';
 const DEFAULT_CAMERA_DIRECTION_FIELD = 'Direction_of_Camera__Degrees_';

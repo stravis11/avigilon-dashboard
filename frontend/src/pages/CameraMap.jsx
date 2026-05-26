@@ -10,7 +10,7 @@ import LiveStreamModal from '../components/LiveStreamModal';
 import { useAuth } from '../context/AuthContext';
 import { useCameraData } from '../context/CameraDataContext';
 
-const REFRESH_INTERVAL_MS = 300000;
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_MAP_VIEW = {
   center: [-84.395, 33.776],
   zoom: 15,
