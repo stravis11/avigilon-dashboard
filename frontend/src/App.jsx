@@ -46,7 +46,7 @@ const Navigation = () => {
   }
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/', label: 'Servers', icon: LayoutDashboard },
     { path: '/cameras', label: 'Cameras', icon: Camera },
     { path: '/camera-stats', label: 'Camera Stats', icon: BarChart2 },
     { path: '/map', label: 'Map', icon: MapPin },
