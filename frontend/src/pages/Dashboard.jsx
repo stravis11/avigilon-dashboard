@@ -60,6 +60,9 @@ const formatUptime = (seconds) => {
   return `${m}m`;
 };
 
+const getServerIp = (server) => server?.host || server?.address || server?.ip || '';
+const normalizeLookupKey = (value) => String(value || '').trim().toLowerCase();
+
 const Dashboard = () => {
   const { dashboardStats, sites, loading: contextLoading, error: contextError, refresh } = useCameraData();
   const [serverInfo, setServerInfo] = useState(null);
@@ -74,6 +77,7 @@ const Dashboard = () => {
   const [cloudStatus, setCloudStatus] = useState(null);
   const [cloudHealthData, setCloudHealthData] = useState(null);
   const [zabbixData, setZabbixData] = useState(null);
+  const [zabbixServerHealthMap, setZabbixServerHealthMap] = useState({});
   const [zabbixLoading, setZabbixLoading] = useState(false);
 
   // Load lightweight dashboard-specific data on mount (server info, cloud status)
@@ -140,7 +144,38 @@ const Dashboard = () => {
         setCloudHealthData(healthMap);
       })
       .catch(() => {}); // silent — no token configured or no cached data
+
+    // Zabbix SNMP summary — used for the Servers table OS Version column.
+    apiService.getZabbixServers()
+      .then((response) => {
+        const healthList = response?.data || response;
+        const healthMap = {};
+        (Array.isArray(healthList) ? healthList : []).forEach((server) => {
+          [server.name, server.host, server.ip].forEach((key) => {
+            const normalized = normalizeLookupKey(key);
+            if (normalized) healthMap[normalized] = server;
+          });
+        });
+        setZabbixServerHealthMap(healthMap);
+      })
+      .catch(() => setZabbixServerHealthMap({}));
   }, []);
+
+  const getZabbixHealthForServer = useCallback((server) => {
+    if (!server || !zabbixServerHealthMap) return null;
+    const candidates = [
+      server.name,
+      server.host,
+      server.address,
+      server.ip,
+    ].map(normalizeLookupKey).filter(Boolean);
+    return candidates.map(key => zabbixServerHealthMap[key]).find(Boolean) || null;
+  }, [zabbixServerHealthMap]);
+
+  const getServerOsVersion = useCallback((server, fallbackHealth = null) => {
+    const health = fallbackHealth?.data ? fallbackHealth : getZabbixHealthForServer(server);
+    return health?.data?.os || '';
+  }, [getZabbixHealthForServer]);
 
   // Full refresh: triggers backend ACC re-poll + context re-fetch + dashboard extras
   const loadDashboardData = useCallback(async () => {
@@ -192,8 +227,12 @@ const Dashboard = () => {
           bVal = (b.name || '').toLowerCase();
           break;
         case 'ip':
-          aVal = a.host || a.address || a.ip || '';
-          bVal = b.host || b.address || b.ip || '';
+          aVal = getServerIp(a);
+          bVal = getServerIp(b);
+          break;
+        case 'os':
+          aVal = (getServerOsVersion(a) || '').toLowerCase();
+          bVal = (getServerOsVersion(b) || '').toLowerCase();
           break;
         case 'cameraChannels':
           aVal = a.cameraChannels;
@@ -211,7 +250,7 @@ const Dashboard = () => {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [dashboardStats, sortColumn, sortDirection]);
+  }, [dashboardStats, sortColumn, sortDirection, getServerOsVersion]);
 
   // Look up cloud health data for a server by name
   const getCloudHealthForServer = useCallback((serverName) => {
@@ -249,6 +288,7 @@ const Dashboard = () => {
   // Server Detail Modal Component
   const ServerDetailModal = ({ server, cloudHealth, zabbixHealth, zabbixLoading, onClose }) => {
     if (!server) return null;
+    const osVersion = getServerOsVersion(server, zabbixHealth);
 
     return (
       <div
@@ -308,7 +348,13 @@ const Dashboard = () => {
                     <div className="flex justify-between">
                       <dt className="text-sm text-gray-600 dark:text-gray-400">IP Address</dt>
                       <dd className="text-sm font-medium text-gray-900 dark:text-white">
-                        {server.host || 'N/A'}
+                        {getServerIp(server) || 'N/A'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-sm text-gray-600 dark:text-gray-400">OS Version</dt>
+                      <dd className="text-sm font-medium text-gray-900 dark:text-white text-right max-w-[65%]">
+                        {osVersion || (zabbixLoading ? 'Loading...' : 'N/A')}
                       </dd>
                     </div>
                     <div className="flex justify-between">
@@ -989,6 +1035,12 @@ const Dashboard = () => {
                       Server IP <SortIndicator column="ip" />
                     </th>
                     <th
+                      className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors hidden lg:table-cell"
+                      onClick={() => handleSort('os')}
+                    >
+                      OS Version <SortIndicator column="os" />
+                    </th>
+                    <th
                       className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
                       onClick={() => handleSort('cameraChannels')}
                     >
@@ -1014,7 +1066,12 @@ const Dashboard = () => {
                         {server.isStandby && <span className="ml-2 text-gray-500 dark:text-gray-400 font-normal">(Standby)</span>}
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 hidden sm:table-cell">
-                        {server.host || server.address || server.ip || 'N/A'}
+                        {getServerIp(server) || 'N/A'}
+                      </td>
+                      <td className="px-3 sm:px-6 py-4 text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell max-w-xs">
+                        <span className="block truncate" title={getServerOsVersion(server) || 'N/A'}>
+                          {getServerOsVersion(server) || 'N/A'}
+                        </span>
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {server.cameraChannels}
