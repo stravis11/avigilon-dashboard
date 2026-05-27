@@ -70,6 +70,18 @@ const formatRecordingDays = (value, isLowerBound = false) => {
   return isLowerBound ? `>= ${label}` : label;
 };
 
+const formatHeadroomViews = (value, isLowerBound = false) => {
+  if (value == null || Number.isNaN(Number(value))) return 'N/A';
+  const label = `${Math.max(0, Number(value)).toLocaleString()} views`;
+  return isLowerBound ? `>= ${label}` : label;
+};
+
+const formatHeadroomPercent = (value, isLowerBound = false) => {
+  if (value == null || Number.isNaN(Number(value))) return 'N/A';
+  const label = `${Math.max(0, Number(value)).toLocaleString()}%`;
+  return isLowerBound ? `>= ${label}` : label;
+};
+
 const formatDateTime = (value) => {
   if (!value) return 'N/A';
   return new Date(value).toLocaleString();
@@ -310,9 +322,9 @@ const Dashboard = () => {
           aVal = a.viewCount;
           bVal = b.viewCount;
           break;
-        case 'recordingDays':
-          aVal = getRecordingAvailabilityForServer(a)?.estimatedDays ?? -1;
-          bVal = getRecordingAvailabilityForServer(b)?.estimatedDays ?? -1;
+        case 'recordingHeadroom':
+          aVal = getRecordingAvailabilityForServer(a)?.estimatedAdditionalCameraViews ?? -1;
+          bVal = getRecordingAvailabilityForServer(b)?.estimatedAdditionalCameraViews ?? -1;
           break;
         default:
           aVal = a.name || '';
@@ -482,7 +494,7 @@ const Dashboard = () => {
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 flex items-center">
                       <Clock className="h-4 w-4 mr-1.5" />
-                      Recording Availability
+                      Recording Headroom
                     </h3>
                     <button
                       type="button"
@@ -497,7 +509,22 @@ const Dashboard = () => {
                   {recordingData ? (
                     <dl className="space-y-2">
                       <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Estimated Recording Days</dt>
+                        <dt className="text-sm text-gray-600 dark:text-gray-400">Additional Camera Capacity</dt>
+                        <dd className={`text-sm font-semibold ${getRecordingStatusClass(recordingData)}`}>
+                          {formatHeadroomViews(
+                            recordingData.estimatedAdditionalCameraViews,
+                            recordingData.estimatedAdditionalCameraViewsIsLowerBound
+                          )}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-sm text-gray-600 dark:text-gray-400">Headroom Above 30 Days</dt>
+                        <dd className={`text-sm font-semibold ${getRecordingStatusClass(recordingData)}`}>
+                          {formatHeadroomPercent(recordingData.headroomPercent, recordingData.estimatedDaysIsLowerBound)}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-sm text-gray-600 dark:text-gray-400">Observed Retention</dt>
                         <dd className={`text-sm font-semibold ${getRecordingStatusClass(recordingData)}`}>
                           {formatRecordingDays(recordingData.estimatedDays, recordingData.estimatedDaysIsLowerBound)}
                         </dd>
@@ -536,7 +563,7 @@ const Dashboard = () => {
                     </p>
                   )}
                   <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    Read-only estimate from recorded timeline history. It does not change ACC retention settings.
+                    Capacity is estimated from observed retention above the 30-day minimum using the server's current camera load. It does not change ACC retention settings.
                   </p>
                 </div>
 
@@ -1215,10 +1242,10 @@ const Dashboard = () => {
                     </th>
                     <th
                       className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
-                      onClick={() => handleSort('recordingDays')}
-                      title="Read-only estimated days of observed recorded video from ACC timelines"
+                      onClick={() => handleSort('recordingHeadroom')}
+                      title="Estimated additional camera views this server can absorb while preserving the 30-day recording minimum"
                     >
-                      Recording Days <SortIndicator column="recordingDays" />
+                      Headroom <SortIndicator column="recordingHeadroom" />
                     </th>
                   </tr>
                 </thead>
@@ -1256,8 +1283,16 @@ const Dashboard = () => {
                           >
                             {recordingLoading && !availability
                               ? 'Loading...'
-                              : formatRecordingDays(availability?.estimatedDays, availability?.estimatedDaysIsLowerBound)}
+                              : formatHeadroomViews(
+                                  availability?.estimatedAdditionalCameraViews,
+                                  availability?.estimatedAdditionalCameraViewsIsLowerBound
+                                )}
                           </span>
+                          {availability?.estimatedDays != null && (
+                            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                              {formatRecordingDays(availability.estimatedDays, availability.estimatedDaysIsLowerBound)}
+                            </span>
+                          )}
                           {availability?.status === 'limited' && (
                             <span className="ml-2 text-xs text-yellow-700 dark:text-yellow-400">Limited</span>
                           )}

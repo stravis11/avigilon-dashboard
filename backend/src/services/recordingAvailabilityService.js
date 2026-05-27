@@ -13,7 +13,8 @@ const DEFAULT_SAMPLE_SIZE = 3;
 const DEFAULT_LOOKBACK_DAYS = 365;
 const DEFAULT_HISTORY_LIMIT = 5000;
 const PROBE_WINDOW_DAYS = 2;
-const PROBE_DAYS = [30, 60, 90, 120, 180, 365];
+const MINIMUM_RETENTION_DAYS = 30;
+const PROBE_DAYS = [30, 45, 60, 75, 90, 120, 180, 365];
 const UNDER_MINIMUM_PROBE_DAYS = [21, 14, 7, 3, 1];
 
 const parsePositiveInt = (value, fallback) => {
@@ -187,6 +188,10 @@ class RecordingAvailabilityService {
       'confidence',
       'estimatedDays',
       'estimatedDaysIsLowerBound',
+      'minimumRequiredDays',
+      'headroomPercent',
+      'estimatedAdditionalCameraViews',
+      'estimatedAdditionalCameraViewsIsLowerBound',
       'minDays',
       'medianDays',
       'maxDays',
@@ -384,6 +389,12 @@ class RecordingAvailabilityService {
     const maxResult = maxDays == null
       ? null
       : successful.find((result) => result.days === maxDays);
+    const headroomPercent = maxDays == null
+      ? null
+      : Math.max(0, ((maxDays / MINIMUM_RETENTION_DAYS) - 1) * 100);
+    const additionalCameraViews = headroomPercent == null
+      ? null
+      : Math.floor(totalCameras * (headroomPercent / 100));
 
     return {
       serverId: server.id,
@@ -394,6 +405,10 @@ class RecordingAvailabilityService {
       confidence,
       estimatedDays: maxDays == null ? null : Number(maxDays.toFixed(1)),
       estimatedDaysIsLowerBound: Boolean(maxResult?.lowerBound),
+      minimumRequiredDays: MINIMUM_RETENTION_DAYS,
+      headroomPercent: headroomPercent == null ? null : Math.round(headroomPercent),
+      estimatedAdditionalCameraViews: additionalCameraViews,
+      estimatedAdditionalCameraViewsIsLowerBound: Boolean(maxResult?.lowerBound),
       minDays: dayValues.length ? Number(Math.min(...dayValues).toFixed(1)) : null,
       medianDays: dayValues.length ? Number(quantile(dayValues, 0.5).toFixed(1)) : null,
       maxDays: maxDays == null ? null : Number(maxDays.toFixed(1)),
