@@ -24,7 +24,7 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
 
   if (requireAdmin && !isAdmin) {
     // Redirect non-admins to home page
-    return <Navigate to="/" replace />;
+    return <Navigate to="/map" replace />;
   }
 
   return children;

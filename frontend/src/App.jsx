@@ -46,7 +46,7 @@ const Navigation = () => {
   }
 
   const navItems = [
-    { path: '/', label: 'Servers', icon: LayoutDashboard },
+    { path: '/servers', label: 'Servers', icon: LayoutDashboard },
     { path: '/cameras', label: 'Cameras', icon: Camera },
     { path: '/camera-stats', label: 'Camera Stats', icon: BarChart2 },
     { path: '/map', label: 'Map', icon: MapPin },
@@ -238,8 +238,9 @@ function AppContent() {
         <Navigation />
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/" element={<Navigate to="/map" replace />} />
           <Route
-            path="/"
+            path="/servers"
             element={
               <ProtectedRoute>
                 <Dashboard />
@@ -295,7 +296,7 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
       </div>
     </Router>

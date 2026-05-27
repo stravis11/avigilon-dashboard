@@ -788,14 +788,11 @@ const Dashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-wrap items-center justify-between gap-y-2">
             <div className="flex items-center space-x-3">
-              {/* Georgia Tech Logo */}
-              <img
-                src="https://www.pngall.com/wp-content/uploads/15/Georgia-Tech-Logo-No-Background.png"
-                alt="Georgia Tech Logo"
-                className="h-8 sm:h-10 w-auto"
-              />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                <Server className="h-6 w-6" />
+              </div>
               <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
-                Georgia Tech Avigilon
+                Server Management
               </h1>
             </div>
             <div className="flex items-center space-x-4">
