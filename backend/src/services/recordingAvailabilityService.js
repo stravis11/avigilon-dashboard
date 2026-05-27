@@ -232,20 +232,19 @@ class RecordingAvailabilityService {
 
     const servers = serversData?.result?.servers || [];
     const cameras = camerasData?.result?.cameras || [];
-    const readings = await mapWithConcurrency(servers, 2, async (server) => {
+    const readings = [];
+
+    for (const server of servers) {
       const camerasOnServer = cameras.filter((camera) => camera.serverId === server.id);
-      return this.collectServer(server, camerasOnServer, collectedAt);
-    });
+      const reading = await this.collectServer(server, camerasOnServer, collectedAt);
+      readings.push(reading);
 
-    const latest = {};
-    readings.forEach((reading) => {
-      latest[reading.serverId] = reading;
-    });
-
-    this.store.latest = latest;
-    this.store.latestCollectedAt = collectedAt;
-    this.store.history = [...this.store.history, ...readings].slice(-this.historyLimit);
-    await this.saveStore();
+      this.store.latest[reading.serverId] = reading;
+      this.store.latestCollectedAt = collectedAt;
+      this.store.history = [...this.store.history, reading].slice(-this.historyLimit);
+      await this.saveStore();
+      logger.info(`Recording availability saved for ${reading.serverName}: ${reading.estimatedDays ?? 'N/A'} days`);
+    }
 
     logger.info(`Recording availability collection complete (${readings.length} servers)`);
     return this.getLatest();
@@ -263,7 +262,7 @@ class RecordingAvailabilityService {
     const sample = selectCameraSample(camerasOnServer, this.sampleSize);
     const cameraResults = await mapWithConcurrency(
       sample,
-      2,
+      1,
       (camera) => this.collectCamera(camera)
     );
 
