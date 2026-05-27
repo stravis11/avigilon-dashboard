@@ -66,6 +66,12 @@ import {
   refreshCameraMap,
 } from '../controllers/mapController.js';
 
+import {
+  getRecordingAvailability,
+  getRecordingAvailabilityHistory,
+  refreshRecordingAvailability,
+} from '../controllers/recordingAvailabilityController.js';
+
 import { requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -97,6 +103,9 @@ router.get('/server', getServerInfo);
 router.get('/servers', getServers);
 router.get('/server/ids', getServerIds);
 router.get('/servers/max-recording-days', getServersMaxRecordingDays);
+router.get('/servers/recording-availability', getRecordingAvailability);
+router.get('/servers/recording-availability/history', getRecordingAvailabilityHistory);
+router.post('/servers/recording-availability/refresh', requireAdmin, refreshRecordingAvailability);
 router.get('/servers/:serverId', getServerById);
 router.get('/servers/:serverId/retention', getRecordingRetention);
 router.get('/servers/:serverId/extended', getServerExtendedInfo);

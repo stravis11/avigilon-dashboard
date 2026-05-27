@@ -99,6 +99,21 @@ const apiService = {
 
   // Dashboard
   getDashboardStats: () => apiClient.get('/dashboard/stats'),
+  getRecordingAvailability: () => apiClient.get('/servers/recording-availability'),
+  refreshRecordingAvailability: () => apiClient.post('/servers/recording-availability/refresh'),
+  getRecordingAvailabilityHistory: (serverId = null) => {
+    const params = serverId ? { serverId } : {};
+    return apiClient.get('/servers/recording-availability/history', { params });
+  },
+  fetchRecordingAvailabilityCsvBlob: async (serverId = null) => {
+    const params = { format: 'csv' };
+    if (serverId) params.serverId = serverId;
+    const response = await apiClient.get('/servers/recording-availability/history', {
+      params,
+      responseType: 'blob',
+    });
+    return URL.createObjectURL(response);
+  },
 
   // Camera map (ArcGIS-backed, read-only)
   getCameraMap: () => apiClient.get('/map/cameras'),

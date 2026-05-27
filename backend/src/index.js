@@ -137,6 +137,7 @@ app.use('/api', authenticateToken, apiRoutes);
 
 // Import service for cache pre-warming
 const { default: avigilonService } = await import('./services/avigilonServiceInstance.js');
+const { default: recordingAvailabilityService } = await import('./services/recordingAvailabilityService.js');
 
 // Import Zabbix service (logs credential status on load)
 await import('./services/zabbixServiceInstance.js');
@@ -174,6 +175,7 @@ app.listen(PORT, () => {
 
   // Start background cache polling after server starts
   avigilonService.startBackgroundPolling();
+  recordingAvailabilityService.startScheduler();
 });
 
 export default app;
