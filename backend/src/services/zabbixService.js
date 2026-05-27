@@ -9,7 +9,7 @@ import { logger } from '../utils/logger.js';
  * cooling device health, array disk health, network adapters, model, service tag.
  *
  * Zabbix uniquely adds:
- *   - OS name & version         (dell.server.sw.os)
+ *   - OS name & version         (system.sw.os / dell.server.sw.os)
  *   - BIOS version              (dell.server.bios.version)
  *   - iDRAC firmware version    (dell.server.hw.firmware)
  *   - Per-DIMM status & size    (dell.server.memory.status/size)
@@ -21,6 +21,7 @@ import { logger } from '../utils/logger.js';
  *   - Overall system health     (dell.server.status)
  */
 const ITEM_KEY_PATTERNS = [
+  'system.sw.os',
   'dell.server.sw.os',
   'dell.server.bios',
   'dell.server.hw.firmware',
@@ -198,7 +199,7 @@ class ZabbixService {
         .map(i => ({ name: i.name, value: i.lastvalue, units: i.units, key: i.key_ }));
 
     // OS
-    const os = byKey('dell.server.sw.os');
+    const os = byKey('system.sw.os') || byKey('dell.server.sw.os');
 
     // BIOS
     const bios = byKey('dell.server.bios.version');
