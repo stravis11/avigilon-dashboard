@@ -9,11 +9,11 @@ const __dirname = dirname(__filename);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_SAMPLE_SIZE = 5;
+const DEFAULT_SAMPLE_SIZE = 3;
 const DEFAULT_LOOKBACK_DAYS = 365;
 const DEFAULT_HISTORY_LIMIT = 5000;
 const PROBE_WINDOW_DAYS = 2;
-const PROBE_DAYS = [30, 45, 60, 75, 90, 120, 150, 180, 240, 300, 365];
+const PROBE_DAYS = [30, 60, 90, 120, 180, 365];
 const UNDER_MINIMUM_PROBE_DAYS = [21, 14, 7, 3, 1];
 
 const parsePositiveInt = (value, fallback) => {
@@ -319,30 +319,10 @@ class RecordingAvailabilityService {
       return null;
     }
 
-    if (firstMiss == null) {
-      return {
-        days: Math.min(this.lookbackDays, latestHit),
-        lowerBound: latestHit >= this.lookbackDays,
-        oldestRecordingAt: new Date(Date.now() - latestHit * DAY_MS),
-      };
-    }
-
-    let low = latestHit;
-    let high = firstMiss;
-    while (high - low > 1) {
-      const mid = Math.floor((low + high) / 2);
-      const hasRecording = await this.timelineHasRecording(cameraId, mid);
-      if (hasRecording) {
-        low = mid;
-      } else {
-        high = mid;
-      }
-    }
-
     return {
-      days: low,
-      lowerBound: false,
-      oldestRecordingAt: new Date(Date.now() - low * DAY_MS),
+      days: latestHit,
+      lowerBound: true,
+      oldestRecordingAt: new Date(Date.now() - latestHit * DAY_MS),
     };
   }
 
