@@ -9,9 +9,12 @@ const __dirname = dirname(__filename);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_SAMPLE_SIZE = 20;
+const DEFAULT_SAMPLE_SIZE = 5;
 const DEFAULT_LOOKBACK_DAYS = 365;
 const DEFAULT_HISTORY_LIMIT = 5000;
+const PROBE_WINDOW_DAYS = 2;
+const PROBE_DAYS = [30, 45, 60, 75, 90, 120, 150, 180, 240, 300, 365];
+const UNDER_MINIMUM_PROBE_DAYS = [21, 14, 7, 3, 1];
 
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -160,7 +163,7 @@ class RecordingAvailabilityService {
   getLatest() {
     return {
       generatedAt: this.store.latestCollectedAt,
-      method: 'timeline_observed_storage_all',
+      method: 'timeline_day_probe_storage_all',
       lookbackDays: this.lookbackDays,
       sampleSize: this.sampleSize,
       servers: Object.values(this.store.latest).sort((a, b) => a.serverName.localeCompare(b.serverName)),
@@ -183,6 +186,7 @@ class RecordingAvailabilityService {
       'status',
       'confidence',
       'estimatedDays',
+      'estimatedDaysIsLowerBound',
       'minDays',
       'medianDays',
       'maxDays',
@@ -257,12 +261,10 @@ class RecordingAvailabilityService {
     }
 
     const sample = selectCameraSample(camerasOnServer, this.sampleSize);
-    const start = new Date(Date.now() - this.lookbackDays * DAY_MS).toISOString();
-    const end = new Date().toISOString();
     const cameraResults = await mapWithConcurrency(
       sample,
-      4,
-      (camera) => this.collectCamera(camera, start, end)
+      2,
+      (camera) => this.collectCamera(camera)
     );
 
     return this.buildReading(server, collectedAt, {
@@ -272,21 +274,82 @@ class RecordingAvailabilityService {
     });
   }
 
-  async collectCamera(camera, start, end) {
-    try {
-      await avigilonService.ensureSession();
-      const response = await avigilonService.axiosInstance.get('/mt/api/rest/v1/timeline', {
-        params: {
-          cameraIds: camera.id,
-          scope: '1000000_SECONDS',
-          start,
-          end,
-          storage: 'ALL',
-        },
-      });
+  async timelineHasRecording(cameraId, daysAgo) {
+    const center = Date.now() - daysAgo * DAY_MS;
+    const halfWindow = (PROBE_WINDOW_DAYS * DAY_MS) / 2;
+    const start = new Date(center - halfWindow).toISOString();
+    const end = new Date(center + halfWindow).toISOString();
 
-      const ranges = extractRanges(response.data?.result);
-      if (!ranges.length) {
+    await avigilonService.ensureSession();
+    const response = await avigilonService.axiosInstance.get('/mt/api/rest/v1/timeline', {
+      params: {
+        cameraIds: cameraId,
+        scope: '10000_SECONDS',
+        start,
+        end,
+        storage: 'ALL',
+      },
+    });
+
+    return extractRanges(response.data?.result).length > 0;
+  }
+
+  async findObservedRecordingDays(cameraId) {
+    const primaryProbeDays = PROBE_DAYS.filter((days) => days <= this.lookbackDays);
+    let latestHit = 0;
+    let firstMiss = null;
+
+    for (const days of primaryProbeDays) {
+      const hasRecording = await this.timelineHasRecording(cameraId, days);
+      if (hasRecording) {
+        latestHit = days;
+      } else {
+        firstMiss = days;
+        break;
+      }
+    }
+
+    if (latestHit === 0) {
+      for (const days of UNDER_MINIMUM_PROBE_DAYS) {
+        const hasRecording = await this.timelineHasRecording(cameraId, days);
+        if (hasRecording) {
+          return { days, lowerBound: false, oldestRecordingAt: new Date(Date.now() - days * DAY_MS) };
+        }
+      }
+      return null;
+    }
+
+    if (firstMiss == null) {
+      return {
+        days: Math.min(this.lookbackDays, latestHit),
+        lowerBound: latestHit >= this.lookbackDays,
+        oldestRecordingAt: new Date(Date.now() - latestHit * DAY_MS),
+      };
+    }
+
+    let low = latestHit;
+    let high = firstMiss;
+    while (high - low > 1) {
+      const mid = Math.floor((low + high) / 2);
+      const hasRecording = await this.timelineHasRecording(cameraId, mid);
+      if (hasRecording) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    return {
+      days: low,
+      lowerBound: false,
+      oldestRecordingAt: new Date(Date.now() - low * DAY_MS),
+    };
+  }
+
+  async collectCamera(camera) {
+    try {
+      const observed = await this.findObservedRecordingDays(camera.id);
+      if (!observed) {
         return {
           cameraId: camera.id,
           cameraName: camera.name || camera.deviceName || camera.id,
@@ -294,17 +357,14 @@ class RecordingAvailabilityService {
         };
       }
 
-      const oldest = ranges.reduce((min, range) => range.start < min ? range.start : min, ranges[0].start);
-      const newest = ranges.reduce((max, range) => range.end > max ? range.end : max, ranges[0].end);
-      const days = Math.max(0, (Date.now() - oldest.getTime()) / DAY_MS);
-
       return {
         cameraId: camera.id,
         cameraName: camera.name || camera.deviceName || camera.id,
         status: 'ok',
-        days,
-        oldestRecordingAt: oldest.toISOString(),
-        newestRecordingAt: newest.toISOString(),
+        days: observed.days,
+        lowerBound: observed.lowerBound,
+        oldestRecordingAt: observed.oldestRecordingAt.toISOString(),
+        newestRecordingAt: new Date().toISOString(),
       };
     } catch (error) {
       return {
@@ -342,15 +402,19 @@ class RecordingAvailabilityService {
     }
 
     const maxDays = dayValues.length ? Math.max(...dayValues) : null;
+    const maxResult = maxDays == null
+      ? null
+      : successful.find((result) => result.days === maxDays);
 
     return {
       serverId: server.id,
       serverName: server.name || server.id,
       collectedAt,
-      method: 'timeline_observed_storage_all',
+      method: 'timeline_day_probe_storage_all',
       status,
       confidence,
       estimatedDays: maxDays == null ? null : Number(maxDays.toFixed(1)),
+      estimatedDaysIsLowerBound: Boolean(maxResult?.lowerBound),
       minDays: dayValues.length ? Number(Math.min(...dayValues).toFixed(1)) : null,
       medianDays: dayValues.length ? Number(quantile(dayValues, 0.5).toFixed(1)) : null,
       maxDays: maxDays == null ? null : Number(maxDays.toFixed(1)),

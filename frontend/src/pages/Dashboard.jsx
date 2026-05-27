@@ -63,10 +63,11 @@ const formatUptime = (seconds) => {
 const getServerIp = (server) => server?.host || server?.address || server?.ip || '';
 const normalizeLookupKey = (value) => String(value || '').trim().toLowerCase();
 
-const formatRecordingDays = (value) => {
+const formatRecordingDays = (value, isLowerBound = false) => {
   if (value == null || Number.isNaN(Number(value))) return 'N/A';
   const days = Number(value);
-  return days >= 10 ? `${Math.round(days)} days` : `${days.toFixed(1)} days`;
+  const label = days >= 10 ? `${Math.round(days)} days` : `${days.toFixed(1)} days`;
+  return isLowerBound ? `>= ${label}` : label;
 };
 
 const formatDateTime = (value) => {
@@ -498,7 +499,7 @@ const Dashboard = () => {
                       <div className="flex justify-between">
                         <dt className="text-sm text-gray-600 dark:text-gray-400">Estimated Recording Days</dt>
                         <dd className={`text-sm font-semibold ${getRecordingStatusClass(recordingData)}`}>
-                          {formatRecordingDays(recordingData.estimatedDays)}
+                          {formatRecordingDays(recordingData.estimatedDays, recordingData.estimatedDaysIsLowerBound)}
                         </dd>
                       </div>
                       <div className="flex justify-between">
@@ -518,7 +519,7 @@ const Dashboard = () => {
                         <dt className="text-sm text-gray-600 dark:text-gray-400">Observed Range</dt>
                         <dd className="text-sm font-medium text-gray-900 dark:text-white text-right max-w-[65%]">
                           {recordingData.minDays != null && recordingData.maxDays != null
-                            ? `${formatRecordingDays(recordingData.minDays)} - ${formatRecordingDays(recordingData.maxDays)}`
+                            ? `${formatRecordingDays(recordingData.minDays)} - ${formatRecordingDays(recordingData.maxDays, recordingData.estimatedDaysIsLowerBound)}`
                             : 'N/A'}
                         </dd>
                       </div>
@@ -1253,7 +1254,9 @@ const Dashboard = () => {
                             className={`font-medium ${getRecordingStatusClass(availability)}`}
                             title={availability ? `${availability.confidence} confidence; sampled ${availability.successfulSamples} of ${availability.sampleSize} cameras` : 'No recording availability reading collected yet'}
                           >
-                            {recordingLoading && !availability ? 'Loading...' : formatRecordingDays(availability?.estimatedDays)}
+                            {recordingLoading && !availability
+                              ? 'Loading...'
+                              : formatRecordingDays(availability?.estimatedDays, availability?.estimatedDaysIsLowerBound)}
                           </span>
                           {availability?.status === 'limited' && (
                             <span className="ml-2 text-xs text-yellow-700 dark:text-yellow-400">Limited</span>
