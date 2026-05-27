@@ -35,6 +35,16 @@ const ITEM_KEY_PATTERNS = [
   'dell.server.status',
 ];
 
+const formatOsVersion = (value) => {
+  const os = String(value || '').trim();
+  if (!os) return null;
+
+  const windowsServerMatch = os.match(/Windows Server\s+\d{4}(?:\s+R2)?(?:\s+(?:Standard|Datacenter|Essentials|Foundation|Evaluation|Azure Edition))?/i);
+  if (windowsServerMatch) return windowsServerMatch[0].replace(/\s+/g, ' ').trim();
+
+  return os;
+};
+
 class ZabbixService {
   constructor() {
     this.apiUrl = process.env.ZABBIX_URL || 'https://gtpd-zabbix.police.gatech.edu/zabbix/api_jsonrpc.php';
@@ -277,7 +287,7 @@ class ZabbixService {
     const physicalDisks = Object.values(diskMap).length ? Object.values(diskMap) : null;
 
     return {
-      os:              os || null,
+      os:              formatOsVersion(os),
       bios:            bios || null,
       idracFirmware:   idracFirmware || null,
       overallHealth:   overallHealth || null,
