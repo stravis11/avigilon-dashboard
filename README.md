@@ -1,14 +1,17 @@
-# Avigilon Dashboard
+# GT CamHub
 
-A full-stack web application for managing and monitoring Avigilon Control Center (ACC) cameras, sites, and cloud hardware health. Built with React frontend, Node.js backend, and an automated cloud token fetcher.
+A full-stack web application for managing and monitoring Avigilon Control Center (ACC) cameras, ArcGIS camera locations, server inventory, and cloud/Zabbix hardware health. Built with React frontend, Node.js backend, and an automated cloud token fetcher.
 
 ## Screenshots
 
 ### Login Page
 ![Login Page](docs/screenshots/login.png)
 
-### Dashboard
-![Dashboard](docs/screenshots/dashboard.png)
+### Camera Map
+![Camera Map](docs/screenshots/map.png)
+
+### Server Management
+![Server Management](docs/screenshots/servers.png)
 
 ### Cameras View
 ![Cameras](docs/screenshots/cameras.png)
@@ -20,8 +23,13 @@ A full-stack web application for managing and monitoring Avigilon Control Center
 
 - **User Authentication**: Secure JWT-based login with role-based access control
 - **Admin User Management**: Create, edit, and delete user accounts (admin only)
-- **Dashboard Overview**: View system statistics, server information, and site summary
+- **Map-First Workflow**: Authenticated map is the default post-login view
+- **ArcGIS Camera Map**: Read-only camera location feed from an ArcGIS Point FeatureLayer
+- **Camera Layers**: Interior and exterior camera layer controls, including shared Interior Fixed w/ Exterior View cameras
+- **Map Search and Details**: Filter map cameras by search text, zoom to matching cameras, inspect camera details, view snapshots, and launch live video
+- **Server Management**: View system statistics, server inventory, Windows Server versions, camera channels, and site summary
 - **Cloud Hardware Health**: Monitor PSUs, temperatures, cooling, disks, CPU, and memory via Avigilon Cloud HMS API
+- **Zabbix Hardware Details**: Pull supplemental SNMP hardware and OS data from Zabbix
 - **Automated Token Fetcher**: Docker sidecar that automatically captures cloud JWT tokens every 24 hours
 - **Camera Management**: Browse all cameras, view snapshots, and manage camera settings
 - **Site Information**: Access detailed information about ACC sites
@@ -39,6 +47,8 @@ Before you begin, ensure you have the following installed:
 - **ACC Web Endpoint Service** installed on your ACC server
 - **API Credentials**: User nonce and user key from Avigilon Technology Partner Program
 - **Avigilon Cloud Account** (optional, for hardware health monitoring)
+- **ArcGIS API key and Point FeatureLayer** (optional, for the camera map)
+- **Zabbix API token** (optional, for SNMP hardware and OS details)
 
 ### Getting API Credentials
 
@@ -56,7 +66,7 @@ For more information, visit: https://support.avigilon.com/s/article/How-to-obtai
 ### 1. Clone or Extract the Project
 
 ```bash
-cd avigilon-app
+cd avigilon-dashboard
 ```
 
 ### 2. Configure Environment
@@ -85,8 +95,22 @@ CLOUD_TOKEN_SECRET=pick-a-secret-passphrase
 CLOUD_EMAIL=your_cloud_portal_email
 CLOUD_PASSWORD=your_cloud_portal_password
 
+# Zabbix SNMP hardware monitoring (optional)
+ZABBIX_URL=https://your-zabbix-server/zabbix/api_jsonrpc.php
+ZABBIX_API_TOKEN=your_zabbix_api_token
+
+# ArcGIS Camera Map (optional)
+ARCGIS_FEATURE_LAYER_URL=https://your-arcgis-server/arcgis/rest/services/your-service/FeatureServer/0
+ARCGIS_API_KEY=your_arcgis_api_key
+ARCGIS_IP_FIELD=ipAddress
+ARCGIS_LABEL_FIELD=name
+ARCGIS_TYPE_FIELD=Type_of_Camera
+ARCGIS_DIRECTION_FIELD=Direction_of_Camera__Degrees_
+ARCGIS_REFERER=https://your-dashboard-host.example.edu
+ARCGIS_CACHE_TTL_MS=3600000
+
 # CORS Configuration
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+ALLOWED_ORIGINS=http://localhost,http://localhost:5173
 ```
 
 ### 3. Build and Start
@@ -98,7 +122,7 @@ docker compose up -d
 
 ### 4. Access the Application
 
-- Frontend: http://localhost:3000
+- Frontend: http://localhost or https://localhost
 - Backend API: http://localhost:3001
 
 ### 5. Login
@@ -118,7 +142,7 @@ Use the default admin credentials:
 │  ┌──────────────┐        ┌──────────────────────┐               │
 │  │   Frontend   │        │      Backend         │               │
 │  │   (nginx)    │ ────>  │   (Node.js/Express)  │               │
-│  │   Port 3000  │        │      Port 3001       │               │
+│  │  Ports 80/443│        │      Port 3001       │               │
 │  └──────────────┘        └──────────────────────┘               │
 │                                    ▲                             │
 │                                    │ POST /api/cloud/token-submit│
@@ -132,8 +156,8 @@ Use the default admin credentials:
 
 **Services:**
 - **Frontend**: nginx serving the React build, proxies `/api/` requests to the backend
-- **Backend**: Node.js Express API with health checks, ACC proxy, and cloud API integration
-- **Token Fetcher**: Python sidecar with headless Chromium that automates Avigilon Cloud login to capture JWT tokens. Runs every 24 hours and supports on-demand refresh via the Cloud Settings page.
+- **Backend**: Node.js Express API with health checks, ACC proxy, ArcGIS map feed, Zabbix integration, and cloud API integration
+- **Token Fetcher**: Python sidecar with headless Chromium that automates Avigilon Cloud login to capture JWT tokens. Runs every 24 hours and supports on-demand refresh via the Cloud page.
 - **Data persistence**: User data stored in a mounted volume (`backend/src/data/`)
 
 ### Docker Commands
@@ -181,6 +205,18 @@ The dashboard integrates with the Avigilon Cloud HMS (Health Monitoring Service)
 
 You can trigger a manual token refresh from the **Cloud** page in the dashboard by clicking the **Refresh Token** button. This is useful if you need fresh health data before the next automatic cycle.
 
+## ArcGIS Camera Map
+
+The Map page uses ArcGIS as the authoritative read-only source for camera locations and map metadata. The backend keeps the ArcGIS API key server-side, refreshes the FeatureLayer feed on an hourly cache interval by default, joins records to ACC cameras by normalized IP address, and exposes a dashboard-ready map feed.
+
+Map features include:
+
+- Interior and exterior camera layer toggles
+- Camera direction icons from the ArcGIS direction field
+- Search that filters markers and zooms to matching cameras
+- Camera detail panel with ACC status, ArcGIS metadata, snapshot, and live video launch
+- Data quality counts for unmatched ArcGIS records and ACC cameras missing from ArcGIS
+
 ## Local Development (Without Docker)
 
 ### Backend Setup
@@ -208,12 +244,13 @@ The frontend will start on `http://localhost:5173`
 ## Project Structure
 
 ```
-avigilon-app/
+avigilon-dashboard/
 ├── backend/
 │   ├── src/
 │   │   ├── controllers/
 │   │   │   ├── avigilonController.js    # ACC request handlers
 │   │   │   ├── cloudController.js       # Cloud API handlers
+│   │   │   ├── mapController.js         # ArcGIS map feed handlers
 │   │   │   ├── authController.js        # Login/logout handlers
 │   │   │   └── userController.js        # User CRUD handlers
 │   │   ├── middleware/
@@ -223,7 +260,9 @@ avigilon-app/
 │   │   │   └── auth.js                  # Auth routes
 │   │   ├── services/
 │   │   │   ├── avigilonService.js       # ACC API integration
+│   │   │   ├── arcgisMapService.js      # ArcGIS FeatureLayer integration
 │   │   │   ├── cloudApiService.js       # Cloud HMS API integration
+│   │   │   ├── zabbixService.js         # Zabbix API integration
 │   │   │   ├── cloudApiServiceInstance.js # Cloud service singleton
 │   │   │   └── authService.js           # JWT & user management
 │   │   ├── data/
@@ -242,13 +281,15 @@ avigilon-app/
 │   │   │   ├── ThemeContext.jsx          # Theme state
 │   │   │   └── AuthContext.jsx          # Auth state
 │   │   ├── pages/
-│   │   │   ├── Dashboard.jsx            # Dashboard with server health
+│   │   │   ├── CameraMap.jsx            # ArcGIS-backed camera map
+│   │   │   ├── Dashboard.jsx            # Server management and health
 │   │   │   ├── CloudSettings.jsx        # Cloud connection management
 │   │   │   ├── Cameras.jsx              # Cameras page
+│   │   │   ├── CameraStats.jsx          # Camera statistics page
 │   │   │   ├── Login.jsx                # Login page
 │   │   │   └── UserManagement.jsx       # User admin page
 │   │   ├── services/
-│   │   │   ├── apiService.js            # ACC & Cloud API client
+│   │   │   ├── apiService.js            # ACC, Map, Zabbix & Cloud API client
 │   │   │   └── authService.js           # Auth API client
 │   │   ├── App.jsx                      # Main app component
 │   │   ├── main.jsx                     # Entry point
@@ -310,6 +351,13 @@ avigilon-app/
 | GET | `/api/cameras/:cameraId/snapshot` | Get camera snapshot |
 | GET | `/api/dashboard/stats` | Get dashboard statistics |
 
+### Camera Map Routes (Protected)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/map/cameras` | Get ArcGIS-backed camera map feed joined to ACC camera data |
+| POST | `/api/map/refresh` | Force refresh of the read-only ArcGIS map cache (admin only) |
+
 ### Cloud API Routes (Protected)
 
 | Method | Endpoint | Description |
@@ -321,6 +369,25 @@ avigilon-app/
 | GET | `/api/cloud/servers/:serverId` | Get cloud server details |
 | GET | `/api/cloud/health-summary` | Get all servers' health data |
 | POST | `/api/cloud/refresh-token` | Trigger manual token refresh |
+
+### Zabbix Routes (Protected)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/zabbix/status` | Get Zabbix connection status |
+| GET | `/api/zabbix/servers` | Get Zabbix server hardware/OS summary |
+| GET | `/api/zabbix/servers/:ipOrName` | Get Zabbix hardware details for a server |
+| POST | `/api/zabbix/missing-import` | Generate import data for servers missing from Zabbix |
+
+### Recording Availability Routes (Protected, Experimental)
+
+These backend routes are retained for research, but recording headroom/capacity is not currently displayed in the UI.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/servers/recording-availability` | Get latest read-only recording availability estimates |
+| GET | `/api/servers/recording-availability/history` | Get recording availability history or CSV export |
+| POST | `/api/servers/recording-availability/refresh` | Trigger manual recording availability refresh (admin only) |
 
 ## Configuration
 
@@ -335,10 +402,24 @@ avigilon-app/
 | `ACC_PASSWORD` | ACC password | Yes |
 | `ACC_USER_NONCE` | API nonce from Avigilon | Yes |
 | `ACC_USER_KEY` | API key from Avigilon | Yes |
+| `ZABBIX_URL` | Zabbix API URL | For Zabbix features |
+| `ZABBIX_API_TOKEN` | Zabbix API token | For Zabbix features |
+| `ARCGIS_FEATURE_LAYER_URL` | ArcGIS camera FeatureLayer URL | For map features |
+| `ARCGIS_API_KEY` | ArcGIS API key | For map features |
+| `ARCGIS_IP_FIELD` | ArcGIS field containing camera IP address | For map features |
+| `ARCGIS_LABEL_FIELD` | Optional ArcGIS display label field | No |
+| `ARCGIS_TYPE_FIELD` | Optional ArcGIS camera type/layer field | No |
+| `ARCGIS_DIRECTION_FIELD` | Optional ArcGIS direction/bearing field | No |
+| `ARCGIS_REFERER` | Optional referrer header for restricted ArcGIS keys | No |
+| `ARCGIS_CACHE_TTL_MS` | ArcGIS cache refresh interval in milliseconds | No |
 | `CLOUD_SITE_ID` | Avigilon Cloud site ID | For cloud features |
 | `CLOUD_TOKEN_SECRET` | Shared secret for token submission | For cloud features |
 | `CLOUD_EMAIL` | Avigilon Cloud portal email | For cloud features |
 | `CLOUD_PASSWORD` | Avigilon Cloud portal password | For cloud features |
+| `RECORDING_AVAILABILITY_INTERVAL_MS` | Experimental recording availability collection interval | No |
+| `RECORDING_AVAILABILITY_SAMPLE_SIZE` | Experimental camera sample size per server | No |
+| `RECORDING_AVAILABILITY_LOOKBACK_DAYS` | Experimental timeline lookback window | No |
+| `RECORDING_AVAILABILITY_HISTORY_LIMIT` | Experimental history limit | No |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | No |
 
 ## Security Notes
@@ -351,6 +432,7 @@ avigilon-app/
 6. **CORS configuration** — Update allowed origins for production
 7. **Default Admin** — Change the default admin password after first login
 8. **Cloud credentials** — The token-fetcher runs on an internal Docker network; cloud credentials never leave the server
+9. **ArcGIS credentials** — The ArcGIS API key stays backend-side and is never exposed directly to the frontend
 
 ## Troubleshooting
 
@@ -374,7 +456,7 @@ avigilon-app/
 2. Verify `CLOUD_EMAIL` and `CLOUD_PASSWORD` in `.env` are correct
 3. Verify `CLOUD_SITE_ID` matches your Avigilon Cloud site
 4. Check screenshots in `token-fetcher/screenshots/` for login flow debugging
-5. Try clicking **Refresh Token** on the Cloud Settings page
+5. Try clicking **Refresh Token** on the Cloud page
 
 ### Token Fetcher Login Fails
 
@@ -393,6 +475,17 @@ avigilon-app/
 **Solutions:**
 1. Add your frontend URL to `ALLOWED_ORIGINS` in backend `.env`
 2. Restart the backend server after changing `.env`
+
+### Camera Map Does Not Load
+
+**Problem:** Map page loads but no camera locations appear
+
+**Solutions:**
+1. Verify `ARCGIS_FEATURE_LAYER_URL` points to the correct Point FeatureLayer or layer index
+2. Confirm `ARCGIS_API_KEY` has access to the selected ArcGIS item
+3. Confirm `ARCGIS_IP_FIELD` matches the FeatureLayer field containing camera IP addresses
+4. Check backend logs for ArcGIS 403/404 errors
+5. Click **Refresh** on the Map page after ArcGIS item or API key changes
 
 ### Authentication Failed
 
@@ -418,6 +511,7 @@ avigilon-app/
 - **React Router** — Routing
 - **Tailwind CSS** — Styling
 - **Lucide React** — Icons
+- **ArcGIS Maps SDK for JavaScript** — Interactive camera map
 - **Axios** — API client
 
 ### Token Fetcher
@@ -439,6 +533,8 @@ avigilon-app/
 - [x] User authentication and authorization
 - [x] Docker containerization
 - [x] Cloud hardware health monitoring
+- [x] ArcGIS camera map
+- [x] Zabbix OS and hardware details
 - [x] Automated cloud token management
 - [ ] Multi-site support
 - [x] Mobile responsive improvements
@@ -480,8 +576,10 @@ The ACC Web Endpoint Service must be installed on the same system as your ACC Se
 - [ ] ACC Web Endpoint Service installed
 - [ ] Obtained user_nonce and user_key from Avigilon
 - [ ] (Optional) Avigilon Cloud account credentials for health monitoring
+- [ ] (Optional) ArcGIS FeatureLayer URL and API key configured for the Map page
+- [ ] (Optional) Zabbix API token configured for server OS/hardware details
 - [ ] `backend/.env` configured with credentials
 - [ ] Containers built: `docker compose build`
 - [ ] Containers running: `docker compose up -d`
-- [ ] Application accessible at http://localhost:3000
+- [ ] Application accessible at http://localhost or https://localhost
 - [ ] Default admin password changed
