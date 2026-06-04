@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw, Cloud, Thermometer, HardDrive, Cpu, Zap, Wind, Database, Download, Clock } from 'lucide-react';
+import { Server, Camera, MapPin, Activity, AlertCircle, ChevronUp, ChevronDown, X, RefreshCw, Cloud, Thermometer, HardDrive, Cpu, Zap, Wind, Database } from 'lucide-react';
 import apiService from '../services/apiService';
 import { useCameraData } from '../context/CameraDataContext';
 
@@ -63,37 +63,6 @@ const formatUptime = (seconds) => {
 const getServerIp = (server) => server?.host || server?.address || server?.ip || '';
 const normalizeLookupKey = (value) => String(value || '').trim().toLowerCase();
 
-const formatRecordingDays = (value, isLowerBound = false) => {
-  if (value == null || Number.isNaN(Number(value))) return 'N/A';
-  const days = Number(value);
-  const label = days >= 10 ? `${Math.round(days)} days` : `${days.toFixed(1)} days`;
-  return isLowerBound ? `>= ${label}` : label;
-};
-
-const formatHeadroomViews = (value, isLowerBound = false) => {
-  if (value == null || Number.isNaN(Number(value))) return 'N/A';
-  const label = `${Math.max(0, Number(value)).toLocaleString()} views`;
-  return isLowerBound ? `>= ${label}` : label;
-};
-
-const formatHeadroomPercent = (value, isLowerBound = false) => {
-  if (value == null || Number.isNaN(Number(value))) return 'N/A';
-  const label = `${Math.max(0, Number(value)).toLocaleString()}%`;
-  return isLowerBound ? `>= ${label}` : label;
-};
-
-const formatDateTime = (value) => {
-  if (!value) return 'N/A';
-  return new Date(value).toLocaleString();
-};
-
-const getRecordingStatusClass = (availability) => {
-  if (!availability) return 'text-gray-500 dark:text-gray-400';
-  if (availability.status === 'ok') return 'text-green-700 dark:text-green-400';
-  if (availability.status === 'limited') return 'text-yellow-700 dark:text-yellow-400';
-  return 'text-gray-500 dark:text-gray-400';
-};
-
 const Dashboard = () => {
   const { dashboardStats, sites, loading: contextLoading, error: contextError, refresh } = useCameraData();
   const [serverInfo, setServerInfo] = useState(null);
@@ -110,9 +79,6 @@ const Dashboard = () => {
   const [zabbixData, setZabbixData] = useState(null);
   const [zabbixServerHealthMap, setZabbixServerHealthMap] = useState({});
   const [zabbixLoading, setZabbixLoading] = useState(false);
-  const [recordingAvailability, setRecordingAvailability] = useState(null);
-  const [recordingLoading, setRecordingLoading] = useState(false);
-  const [recordingRefreshing, setRecordingRefreshing] = useState(false);
 
   // Load lightweight dashboard-specific data on mount (server info, cloud status)
   useEffect(() => {
@@ -194,51 +160,6 @@ const Dashboard = () => {
       })
       .catch(() => setZabbixServerHealthMap({}));
 
-    setRecordingLoading(true);
-    apiService.getRecordingAvailability()
-      .then((response) => setRecordingAvailability(response?.data || response))
-      .catch((err) => console.warn('Recording availability unavailable:', err.message))
-      .finally(() => setRecordingLoading(false));
-  }, []);
-
-  const recordingAvailabilityMap = useMemo(() => {
-    const map = {};
-    (recordingAvailability?.servers || []).forEach((item) => {
-      map[item.serverId] = item;
-    });
-    return map;
-  }, [recordingAvailability]);
-
-  const getRecordingAvailabilityForServer = useCallback((server) => {
-    if (!server) return null;
-    return recordingAvailabilityMap[server.id] || null;
-  }, [recordingAvailabilityMap]);
-
-  const handleRecordingRefresh = useCallback(async () => {
-    setRecordingRefreshing(true);
-    try {
-      const response = await apiService.refreshRecordingAvailability();
-      setRecordingAvailability(response?.data || response);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setRecordingRefreshing(false);
-    }
-  }, []);
-
-  const handleRecordingCsvDownload = useCallback(async (serverId = null) => {
-    try {
-      const url = await apiService.fetchRecordingAvailabilityCsvBlob(serverId);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = serverId ? `recording-availability-${serverId}.csv` : 'recording-availability.csv';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(err.message);
-    }
   }, []);
 
   const getZabbixHealthForServer = useCallback((server) => {
@@ -322,10 +243,6 @@ const Dashboard = () => {
           aVal = a.viewCount;
           bVal = b.viewCount;
           break;
-        case 'recordingHeadroom':
-          aVal = getRecordingAvailabilityForServer(a)?.estimatedAdditionalCameraViews ?? -1;
-          bVal = getRecordingAvailabilityForServer(b)?.estimatedAdditionalCameraViews ?? -1;
-          break;
         default:
           aVal = a.name || '';
           bVal = b.name || '';
@@ -334,7 +251,7 @@ const Dashboard = () => {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [dashboardStats, sortColumn, sortDirection, getServerOsVersion, getRecordingAvailabilityForServer]);
+  }, [dashboardStats, sortColumn, sortDirection, getServerOsVersion]);
 
   // Look up cloud health data for a server by name
   const getCloudHealthForServer = useCallback((serverName) => {
@@ -370,7 +287,7 @@ const Dashboard = () => {
   };
 
   // Server Detail Modal Component
-  const ServerDetailModal = ({ server, cloudHealth, zabbixHealth, zabbixLoading, recordingData, onClose }) => {
+  const ServerDetailModal = ({ server, cloudHealth, zabbixHealth, zabbixLoading, onClose }) => {
     if (!server) return null;
     const osVersion = getServerOsVersion(server, zabbixHealth);
 
@@ -488,83 +405,6 @@ const Dashboard = () => {
                       </div>
                     )}
                   </dl>
-                </div>
-
-                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 flex items-center">
-                      <Clock className="h-4 w-4 mr-1.5" />
-                      Recording Headroom
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => handleRecordingCsvDownload(server.id)}
-                      className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-900/30"
-                      title="Download this server's recording availability history"
-                    >
-                      <Download className="h-3.5 w-3.5 mr-1" />
-                      CSV
-                    </button>
-                  </div>
-                  {recordingData ? (
-                    <dl className="space-y-2">
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Additional Camera Capacity</dt>
-                        <dd className={`text-sm font-semibold ${getRecordingStatusClass(recordingData)}`}>
-                          {formatHeadroomViews(
-                            recordingData.estimatedAdditionalCameraViews,
-                            recordingData.estimatedAdditionalCameraViewsIsLowerBound
-                          )}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Headroom Above 30 Days</dt>
-                        <dd className={`text-sm font-semibold ${getRecordingStatusClass(recordingData)}`}>
-                          {formatHeadroomPercent(recordingData.headroomPercent, recordingData.estimatedDaysIsLowerBound)}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Observed Retention</dt>
-                        <dd className={`text-sm font-semibold ${getRecordingStatusClass(recordingData)}`}>
-                          {formatRecordingDays(recordingData.estimatedDays, recordingData.estimatedDaysIsLowerBound)}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Confidence</dt>
-                        <dd className="text-sm font-medium text-gray-900 dark:text-white capitalize">
-                          {recordingData.confidence || 'N/A'}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Sampled Cameras</dt>
-                        <dd className="text-sm font-medium text-gray-900 dark:text-white">
-                          {recordingData.successfulSamples} of {recordingData.sampleSize}
-                          <span className="text-gray-400"> / {recordingData.totalCameras} total</span>
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Observed Range</dt>
-                        <dd className="text-sm font-medium text-gray-900 dark:text-white text-right max-w-[65%]">
-                          {recordingData.minDays != null && recordingData.maxDays != null
-                            ? `${formatRecordingDays(recordingData.minDays)} - ${formatRecordingDays(recordingData.maxDays, recordingData.estimatedDaysIsLowerBound)}`
-                            : 'N/A'}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-600 dark:text-gray-400">Collected</dt>
-                        <dd className="text-sm font-medium text-gray-900 dark:text-white text-right max-w-[65%]">
-                          {formatDateTime(recordingData.collectedAt)}
-                        </dd>
-                      </div>
-                    </dl>
-                  ) : (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {recordingLoading ? 'Loading recording availability...' : 'No recording availability reading has been collected yet.'}
-                    </p>
-                  )}
-                  <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    Capacity is estimated from observed retention above the 30-day minimum using the server's current camera load. It does not change ACC retention settings.
-                  </p>
                 </div>
 
                 {/* Cloud Hardware Health Sections */}
@@ -1168,36 +1008,6 @@ const Dashboard = () => {
                 <Server className="h-5 w-5 mr-2" />
                 Servers
               </h2>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <span>
-                  Recording availability:
-                  {' '}
-                  {recordingLoading
-                    ? 'loading'
-                    : recordingAvailability?.generatedAt
-                      ? `updated ${formatDateTime(recordingAvailability.generatedAt)}`
-                      : 'not collected yet'}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleRecordingRefresh}
-                  disabled={recordingRefreshing}
-                  className="inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 px-2.5 py-1.5 font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                  title="Refresh recording availability estimates"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 mr-1 ${recordingRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRecordingCsvDownload()}
-                  className="inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 px-2.5 py-1.5 font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  title="Download recording availability history"
-                >
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  CSV
-                </button>
-              </div>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -1240,19 +1050,10 @@ const Dashboard = () => {
                     >
                       Views <SortIndicator column="views" />
                     </th>
-                    <th
-                      className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50 select-none transition-colors"
-                      onClick={() => handleSort('recordingHeadroom')}
-                      title="Estimated additional camera views this server can absorb while preserving the 30-day recording minimum"
-                    >
-                      Headroom <SortIndicator column="recordingHeadroom" />
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {sortedServers.map((server) => {
-                    const availability = getRecordingAvailabilityForServer(server);
-                    return (
+                  {sortedServers.map((server) => (
                       <tr
                         key={server.id}
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
@@ -1276,30 +1077,8 @@ const Dashboard = () => {
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 hidden md:table-cell">
                           {server.viewCount}
                         </td>
-                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm">
-                          <span
-                            className={`font-medium ${getRecordingStatusClass(availability)}`}
-                            title={availability ? `${availability.confidence} confidence; sampled ${availability.successfulSamples} of ${availability.sampleSize} cameras` : 'No recording availability reading collected yet'}
-                          >
-                            {recordingLoading && !availability
-                              ? 'Loading...'
-                              : formatHeadroomViews(
-                                  availability?.estimatedAdditionalCameraViews,
-                                  availability?.estimatedAdditionalCameraViewsIsLowerBound
-                                )}
-                          </span>
-                          {availability?.estimatedDays != null && (
-                            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                              {formatRecordingDays(availability.estimatedDays, availability.estimatedDaysIsLowerBound)}
-                            </span>
-                          )}
-                          {availability?.status === 'limited' && (
-                            <span className="ml-2 text-xs text-yellow-700 dark:text-yellow-400">Limited</span>
-                          )}
-                        </td>
                       </tr>
-                    );
-                  })}
+                  ))}
                 </tbody>
               </table>
             ) : (
@@ -1316,7 +1095,6 @@ const Dashboard = () => {
           cloudHealth={getCloudHealthForServer(selectedServer.name)}
           zabbixHealth={zabbixData}
           zabbixLoading={zabbixLoading}
-          recordingData={getRecordingAvailabilityForServer(selectedServer)}
           onClose={() => setSelectedServer(null)}
         />
       )}
