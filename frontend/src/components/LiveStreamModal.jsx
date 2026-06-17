@@ -1,12 +1,166 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { X, AlertCircle, Maximize2, Volume2, VolumeX } from 'lucide-react';
 
+const HDSM_PROTOTYPE_CAMERA_NAME = '4th St Apts 1st Flr Goldin Lobby Ent';
+
+const parseSrd = (value) => {
+  const parts = (value || '').split(',').map((part) => Number(part));
+  if (parts.length !== 7 || parts.some((part) => Number.isNaN(part))) return null;
+  const [, x, y, width, height, totalWidth, totalHeight] = parts;
+  if (!width || !height || !totalWidth || !totalHeight) return null;
+  return { x, y, width, height, totalWidth, totalHeight };
+};
+
+const getSupplementalValue = (adaptationSet, schemeIdUri) => {
+  const property = Array.from(adaptationSet.querySelectorAll('SupplementalProperty'))
+    .find((item) => item.getAttribute('schemeIdUri') === schemeIdUri);
+  return property?.getAttribute('value') || '';
+};
+
+const getRole = (adaptationSet) => {
+  return adaptationSet.querySelector('Role')?.getAttribute('value') || '';
+};
+
+const parseRepresentation = (representation, adaptationSet) => {
+  const baseUrl = representation.querySelector('BaseURL')?.textContent;
+  const width = Number(representation.getAttribute('width'));
+  const height = Number(representation.getAttribute('height'));
+  const bandwidth = Number(representation.getAttribute('bandwidth'));
+  const codec = representation.getAttribute('codecs');
+  const mimeType = representation.getAttribute('mimeType');
+
+  if (!baseUrl || !width || !height || !codec || !mimeType) return null;
+
+  return {
+    id: representation.getAttribute('id') || `${width}x${height}`,
+    streamUrl: baseUrl,
+    width,
+    height,
+    bandwidth: Number.isNaN(bandwidth) ? 0 : bandwidth,
+    codec,
+    mimeType,
+    fullMime: `${mimeType}; codecs="${codec}"`,
+    role: getRole(adaptationSet),
+    rotation: Number(getSupplementalValue(adaptationSet, 'urn:avg:rotation:v1') || 0),
+    srd: parseSrd(getSupplementalValue(adaptationSet, 'urn:mpeg:dash:srd:2014'))
+  };
+};
+
+const parseManifest = (mpdText) => {
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(mpdText, 'text/xml');
+  const adaptationSets = Array.from(xml.querySelectorAll('AdaptationSet'));
+  const streams = adaptationSets.flatMap((adaptationSet) => {
+    return Array.from(adaptationSet.querySelectorAll('Representation'))
+      .map((representation) => parseRepresentation(representation, adaptationSet))
+      .filter(Boolean);
+  });
+
+  const mainStreams = streams.filter((stream) => stream.role === 'main');
+  const supplementaryTiles = streams
+    .filter((stream) => stream.role === 'supplementary' && stream.srd)
+    .sort((a, b) => (a.srd.y - b.srd.y) || (a.srd.x - b.srd.x));
+
+  return { streams, mainStreams, supplementaryTiles };
+};
+
+const appendChunk = (sourceBuffer, chunk) => {
+  return new Promise((resolve, reject) => {
+    const doAppend = () => {
+      try {
+        sourceBuffer.appendBuffer(chunk);
+        sourceBuffer.addEventListener('updateend', resolve, { once: true });
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    if (sourceBuffer.updating) {
+      sourceBuffer.addEventListener('updateend', doAppend, { once: true });
+    } else {
+      doAppend();
+    }
+  });
+};
+
+const trimBuffer = (video, sourceBuffer) => {
+  try {
+    if (!sourceBuffer.updating && sourceBuffer.buffered.length > 0) {
+      const currentTime = video.currentTime;
+      const bufferStart = sourceBuffer.buffered.start(0);
+      if (currentTime - bufferStart > 30) {
+        sourceBuffer.remove(bufferStart, currentTime - 15);
+      }
+    }
+  } catch (error) {
+    // Best-effort memory trimming only.
+  }
+};
+
+const startMediaSourceStream = async ({
+  video,
+  stream,
+  headers,
+  signal,
+  isDestroyed,
+  onStarted,
+  onError
+}) => {
+  if (!window.MediaSource || !MediaSource.isTypeSupported(stream.fullMime)) {
+    throw new Error(`Browser does not support ${stream.fullMime}`);
+  }
+
+  const mediaSource = new MediaSource();
+  video.src = URL.createObjectURL(mediaSource);
+
+  await new Promise((resolve, reject) => {
+    mediaSource.addEventListener('sourceopen', resolve, { once: true });
+    mediaSource.addEventListener('error', () => reject(new Error('MediaSource error')), { once: true });
+  });
+
+  if (isDestroyed()) return;
+
+  const sourceBuffer = mediaSource.addSourceBuffer(stream.fullMime);
+  const streamRes = await fetch(stream.streamUrl, { headers, signal });
+  if (!streamRes.ok) throw new Error(`Stream request failed: ${streamRes.status}`);
+  if (!streamRes.body) throw new Error('ReadableStream not supported');
+
+  const reader = streamRes.body.getReader();
+  let hasStartedPlaying = false;
+
+  const readLoop = async () => {
+    while (!isDestroyed()) {
+      const { done, value } = await reader.read();
+      if (done || isDestroyed()) break;
+
+      await appendChunk(sourceBuffer, value);
+
+      if (!hasStartedPlaying && !isDestroyed()) {
+        hasStartedPlaying = true;
+        onStarted?.();
+        video.play().catch(() => {});
+      }
+
+      trimBuffer(video, sourceBuffer);
+    }
+  };
+
+  readLoop().catch((error) => {
+    if (!isDestroyed() && error.name !== 'AbortError') {
+      onError?.(error);
+    }
+  });
+};
+
 const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
   const videoRef = useRef(null);
+  const hdsmContainerRef = useRef(null);
+  const fullscreenContainerRef = useRef(null);
   const abortRef = useRef(null);
   const [status, setStatus] = useState('loading'); // loading, playing, error
   const [errorMessage, setErrorMessage] = useState('');
   const [isMuted, setIsMuted] = useState(true);
+  const [hdsmLayout, setHdsmLayout] = useState(null);
 
   const stableOnClose = useCallback(onClose, [onClose]);
 
@@ -17,6 +171,7 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
 
     const initStream = async () => {
       try {
+        setHdsmLayout(null);
         const token = localStorage.getItem('accessToken');
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
@@ -30,118 +185,74 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
         const mpdText = await manifestRes.text();
         if (destroyed) return;
 
-        // 2. Parse the MPD XML to extract codec, mimeType, and stream URL
-        const parser = new DOMParser();
-        const xml = parser.parseFromString(mpdText, 'text/xml');
-        const representations = xml.querySelectorAll('Representation');
-
-        if (representations.length === 0) {
+        const manifest = parseManifest(mpdText);
+        if (manifest.streams.length === 0) {
           throw new Error('No video representations found in manifest');
         }
 
-        // Pick the first (highest quality) representation
-        const rep = representations[0];
-        const codec = rep.getAttribute('codecs');
-        const mimeType = rep.getAttribute('mimeType');
-        const baseUrlEl = rep.querySelector('BaseURL');
-        if (!baseUrlEl) throw new Error('No BaseURL found in manifest');
+        const isGoldinPrototype = (cameraName || '').toLowerCase().includes(HDSM_PROTOTYPE_CAMERA_NAME.toLowerCase());
+        if (isGoldinPrototype && manifest.supplementaryTiles.length > 0) {
+          const firstTile = manifest.supplementaryTiles[0];
+          const layout = {
+            totalWidth: firstTile.srd.totalWidth,
+            totalHeight: firstTile.srd.totalHeight,
+            rotation: firstTile.rotation || 0,
+            tiles: manifest.supplementaryTiles
+          };
 
-        const streamUrl = baseUrlEl.textContent;
-        const fullMime = `${mimeType}; codecs="${codec}"`;
+          setHdsmLayout(layout);
 
-        // 3. Check MediaSource support
-        if (!window.MediaSource || !MediaSource.isTypeSupported(fullMime)) {
-          throw new Error(`Browser does not support ${fullMime}`);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          if (destroyed) return;
+
+          const tileVideos = Array.from(hdsmContainerRef.current?.querySelectorAll('video[data-tile-id]') || []);
+          if (tileVideos.length === 0) {
+            throw new Error('HDSM tile video elements were not created');
+          }
+
+          let startedTiles = 0;
+          await Promise.all(layout.tiles.map((tile) => {
+            const video = tileVideos.find((item) => item.dataset.tileId === tile.id);
+            if (!video) return Promise.resolve();
+            video.muted = true;
+            video.playsInline = true;
+            return startMediaSourceStream({
+              video,
+              stream: tile,
+              headers,
+              signal: abortController.signal,
+              isDestroyed: () => destroyed,
+              onStarted: () => {
+                startedTiles += 1;
+                if (startedTiles === 1) setStatus('playing');
+              },
+              onError: (error) => {
+                console.error('HDSM tile stream error:', error);
+              }
+            });
+          }));
+
+          return;
         }
 
-        // 4. Create MediaSource and attach to video element
-        const mediaSource = new MediaSource();
+        // Current standard playback path: use the first full-frame/main stream when available.
+        const stream = manifest.mainStreams[0] || manifest.streams[0];
         const video = videoRef.current;
         if (!video || destroyed) return;
 
-        video.src = URL.createObjectURL(mediaSource);
-
-        await new Promise((resolve, reject) => {
-          mediaSource.addEventListener('sourceopen', resolve, { once: true });
-          mediaSource.addEventListener('error', () => reject(new Error('MediaSource error')), { once: true });
-        });
-
-        if (destroyed) return;
-
-        const sourceBuffer = mediaSource.addSourceBuffer(fullMime);
-
-        // 5. Fetch the video stream from the proxy
-        const streamRes = await fetch(streamUrl, {
+        await startMediaSourceStream({
+          video,
+          stream,
           headers,
-          signal: abortController.signal
-        });
-        if (!streamRes.ok) throw new Error(`Stream request failed: ${streamRes.status}`);
-        if (!streamRes.body) throw new Error('ReadableStream not supported');
-
-        const reader = streamRes.body.getReader();
-        let hasStartedPlaying = false;
-
-        // Helper: wait for sourceBuffer to finish updating then append
-        const appendChunk = (chunk) => {
-          return new Promise((resolve, reject) => {
-            const doAppend = () => {
-              try {
-                sourceBuffer.appendBuffer(chunk);
-                sourceBuffer.addEventListener('updateend', resolve, { once: true });
-              } catch (e) {
-                reject(e);
-              }
-            };
-
-            if (sourceBuffer.updating) {
-              sourceBuffer.addEventListener('updateend', doAppend, { once: true });
-            } else {
-              doAppend();
-            }
-          });
-        };
-
-        // Keep buffer trimmed to avoid memory issues (keep last 30s)
-        const trimBuffer = () => {
-          try {
-            if (!sourceBuffer.updating && sourceBuffer.buffered.length > 0) {
-              const currentTime = video.currentTime;
-              const bufferStart = sourceBuffer.buffered.start(0);
-              if (currentTime - bufferStart > 30) {
-                sourceBuffer.remove(bufferStart, currentTime - 15);
-              }
-            }
-          } catch (e) {
-            // Non-critical
-          }
-        };
-
-        // 6. Read chunks and feed to SourceBuffer
-        const readLoop = async () => {
-          while (!destroyed) {
-            const { done, value } = await reader.read();
-            if (done || destroyed) break;
-
-            await appendChunk(value);
-
-            if (!hasStartedPlaying && !destroyed) {
-              hasStartedPlaying = true;
-              setStatus('playing');
-              video.play().catch(() => {});
-            }
-
-            trimBuffer();
-          }
-        };
-
-        readLoop().catch((err) => {
-          if (!destroyed && err.name !== 'AbortError') {
-            console.error('Stream read error:', err);
+          signal: abortController.signal,
+          isDestroyed: () => destroyed,
+          onStarted: () => setStatus('playing'),
+          onError: (error) => {
+            console.error('Stream read error:', error);
             setStatus('error');
-            setErrorMessage(err.message || 'Stream interrupted');
+            setErrorMessage(error.message || 'Stream interrupted');
           }
         });
-
       } catch (err) {
         if (!destroyed && err.name !== 'AbortError') {
           console.error('Failed to initialize stream:', err);
@@ -160,8 +271,13 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
         videoRef.current.pause();
         videoRef.current.src = '';
       }
+      const tileVideos = Array.from(hdsmContainerRef.current?.querySelectorAll('video') || []);
+      tileVideos.forEach((video) => {
+        video.pause();
+        video.src = '';
+      });
     };
-  }, [cameraId]);
+  }, [cameraId, cameraName]);
 
   // Escape key handler
   useEffect(() => {
@@ -175,15 +291,19 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
   }, [stableOnClose]);
 
   const toggleMute = () => {
-    const video = videoRef.current;
-    if (video) {
-      video.muted = !video.muted;
-      setIsMuted(video.muted);
+    const videos = hdsmLayout
+      ? Array.from(hdsmContainerRef.current?.querySelectorAll('video') || [])
+      : [videoRef.current].filter(Boolean);
+
+    if (videos.length > 0) {
+      const muted = !videos[0].muted;
+      videos.forEach((video) => { video.muted = muted; });
+      setIsMuted(muted);
     }
   };
 
   const toggleFullscreen = () => {
-    const container = videoRef.current?.parentElement;
+    const container = fullscreenContainerRef.current;
     if (container) {
       if (document.fullscreenElement) {
         document.exitFullscreen();
@@ -219,14 +339,49 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
         </div>
 
         {/* Video Container */}
-        <div className="flex-1 bg-black flex items-center justify-center relative">
-          <video
-            ref={videoRef}
-            className="w-full h-full object-contain"
-            autoPlay
-            muted
-            playsInline
-          />
+        <div ref={fullscreenContainerRef} className="flex-1 bg-black flex items-center justify-center relative">
+          {hdsmLayout ? (
+            <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black">
+              <div
+                ref={hdsmContainerRef}
+                className="relative max-w-full max-h-full bg-black"
+                style={{
+                  aspectRatio: `${hdsmLayout.totalWidth} / ${hdsmLayout.totalHeight}`,
+                  width: '100%',
+                  height: 'auto',
+                  transform: hdsmLayout.rotation ? `rotate(${hdsmLayout.rotation}deg)` : undefined
+                }}
+              >
+                {hdsmLayout.tiles.map((tile) => (
+                  <video
+                    key={tile.id}
+                    data-tile-id={tile.id}
+                    className="absolute object-fill"
+                    muted
+                    playsInline
+                    autoPlay
+                    style={{
+                      left: `${(tile.srd.x / tile.srd.totalWidth) * 100}%`,
+                      top: `${(tile.srd.y / tile.srd.totalHeight) * 100}%`,
+                      width: `${(tile.srd.width / tile.srd.totalWidth) * 100}%`,
+                      height: `${(tile.srd.height / tile.srd.totalHeight) * 100}%`
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="absolute left-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white">
+                HDSM prototype: {hdsmLayout.tiles.length} tiles
+              </div>
+            </div>
+          ) : (
+            <video
+              ref={videoRef}
+              className="w-full h-full object-contain"
+              autoPlay
+              muted
+              playsInline
+            />
+          )}
 
           {/* Loading overlay */}
           {status === 'loading' && (
