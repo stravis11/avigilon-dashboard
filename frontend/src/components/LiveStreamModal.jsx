@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import dashjs from 'dashjs';
 import { X, AlertCircle, Maximize2, Volume2, VolumeX } from 'lucide-react';
 
 const HDSM_PROTOTYPE_CAMERA_NAME = '4th St Apts 1st Flr Goldin Lobby Ent';
@@ -21,7 +22,7 @@ const getRole = (adaptationSet) => {
   return adaptationSet.querySelector('Role')?.getAttribute('value') || '';
 };
 
-const parseRepresentation = (representation, adaptationSet) => {
+const parseRepresentation = (representation, adaptationSet, adaptationSetXml) => {
   const baseUrl = representation.querySelector('BaseURL')?.textContent;
   const width = Number(representation.getAttribute('width'));
   const height = Number(representation.getAttribute('height'));
@@ -42,17 +43,20 @@ const parseRepresentation = (representation, adaptationSet) => {
     fullMime: `${mimeType}; codecs="${codec}"`,
     role: getRole(adaptationSet),
     rotation: Number(getSupplementalValue(adaptationSet, 'urn:avg:rotation:v1') || 0),
-    srd: parseSrd(getSupplementalValue(adaptationSet, 'urn:mpeg:dash:srd:2014'))
+    srd: parseSrd(getSupplementalValue(adaptationSet, 'urn:mpeg:dash:srd:2014')),
+    adaptationSetXml
   };
 };
 
 const parseManifest = (mpdText) => {
   const parser = new DOMParser();
   const xml = parser.parseFromString(mpdText, 'text/xml');
+  const serializer = new XMLSerializer();
   const adaptationSets = Array.from(xml.querySelectorAll('AdaptationSet'));
   const streams = adaptationSets.flatMap((adaptationSet) => {
+    const adaptationSetXml = serializer.serializeToString(adaptationSet);
     return Array.from(adaptationSet.querySelectorAll('Representation'))
-      .map((representation) => parseRepresentation(representation, adaptationSet))
+      .map((representation) => parseRepresentation(representation, adaptationSet, adaptationSetXml))
       .filter(Boolean);
   });
 
@@ -62,6 +66,82 @@ const parseManifest = (mpdText) => {
     .sort((a, b) => (a.srd.y - b.srd.y) || (a.srd.x - b.srd.x));
 
   return { streams, mainStreams, supplementaryTiles };
+};
+
+const createTileManifestUrl = (adaptationSetXml) => {
+  const mpdXml = `<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"
+     profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"
+     type="static"
+     minBufferTime="PT1.5S">
+  <Period>
+    ${adaptationSetXml}
+  </Period>
+</MPD>`;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(mpdXml, 'application/xml');
+  doc.querySelectorAll('BaseURL').forEach((baseUrl) => {
+    baseUrl.textContent = new URL(baseUrl.textContent, window.location.origin).href;
+  });
+
+  const serialized = new XMLSerializer().serializeToString(doc);
+  return URL.createObjectURL(new Blob([serialized], { type: 'application/dash+xml' }));
+};
+
+const createDashTilePlayer = ({ video, tile, headers, onStarted, onError }) => {
+  const manifestUrl = createTileManifestUrl(tile.adaptationSetXml);
+  const player = dashjs.MediaPlayer().create();
+  const authInterceptor = async (request) => {
+    request.headers = {
+      ...(request.headers || {}),
+      ...headers
+    };
+    return request;
+  };
+
+  player.updateSettings({
+    streaming: {
+      buffer: {
+        fastSwitchEnabled: true,
+        stableBufferTime: 6,
+        bufferTimeAtTopQuality: 6,
+        bufferToKeep: 20
+      },
+      retryAttempts: {
+        MPD: 2,
+        XLinkExpansion: 2,
+        MediaSegment: 3,
+        InitializationSegment: 3
+      },
+      retryIntervals: {
+        MPD: 500,
+        XLinkExpansion: 500,
+        MediaSegment: 500,
+        InitializationSegment: 500
+      }
+    }
+  });
+
+  player.addRequestInterceptor(authInterceptor);
+  player.on(dashjs.MediaPlayer.events.PLAYBACK_STARTED, onStarted);
+  player.on(dashjs.MediaPlayer.events.ERROR, onError);
+  player.initialize(video, manifestUrl, true);
+
+  return {
+    player,
+    manifestUrl,
+    destroy: () => {
+      try {
+        player.off(dashjs.MediaPlayer.events.PLAYBACK_STARTED, onStarted);
+        player.off(dashjs.MediaPlayer.events.ERROR, onError);
+        player.removeRequestInterceptor(authInterceptor);
+        player.reset();
+      } finally {
+        URL.revokeObjectURL(manifestUrl);
+      }
+    }
+  };
 };
 
 const appendChunk = (sourceBuffer, chunk) => {
@@ -156,6 +236,7 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
   const videoRef = useRef(null);
   const hdsmContainerRef = useRef(null);
   const fullscreenContainerRef = useRef(null);
+  const hdsmPlayersRef = useRef([]);
   const abortRef = useRef(null);
   const [status, setStatus] = useState('loading'); // loading, playing, error
   const [errorMessage, setErrorMessage] = useState('');
@@ -169,8 +250,14 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
     const abortController = new AbortController();
     abortRef.current = abortController;
 
+    const destroyHdsmPlayers = () => {
+      hdsmPlayersRef.current.forEach((entry) => entry.destroy());
+      hdsmPlayersRef.current = [];
+    };
+
     const initStream = async () => {
       try {
+        destroyHdsmPlayers();
         setHdsmLayout(null);
         const token = localStorage.getItem('accessToken');
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -211,26 +298,25 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
           }
 
           let startedTiles = 0;
-          await Promise.all(layout.tiles.map((tile) => {
+          hdsmPlayersRef.current = layout.tiles.map((tile) => {
             const video = tileVideos.find((item) => item.dataset.tileId === tile.id);
-            if (!video) return Promise.resolve();
+            if (!video) return null;
             video.muted = true;
             video.playsInline = true;
-            return startMediaSourceStream({
+            video.autoplay = true;
+
+            return createDashTilePlayer({
               video,
-              stream: tile,
               headers,
-              signal: abortController.signal,
-              isDestroyed: () => destroyed,
               onStarted: () => {
                 startedTiles += 1;
                 if (startedTiles === 1) setStatus('playing');
               },
               onError: (error) => {
-                console.error('HDSM tile stream error:', error);
+                if (!destroyed) console.error('HDSM dash tile error:', error);
               }
             });
-          }));
+          }).filter(Boolean);
 
           return;
         }
@@ -267,6 +353,7 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
     return () => {
       destroyed = true;
       abortController.abort();
+      destroyHdsmPlayers();
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.src = '';
