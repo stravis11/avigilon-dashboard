@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import dashjs from 'dashjs';
+import * as dashjs from 'dashjs';
 import { X, AlertCircle, Maximize2, Volume2, VolumeX } from 'lucide-react';
 
 const HDSM_PROTOTYPE_CAMERA_NAME = '4th St Apts 1st Flr Goldin Lobby Ent';
@@ -90,8 +90,13 @@ const createTileManifestUrl = (adaptationSetXml) => {
 };
 
 const createDashTilePlayer = ({ video, tile, headers, onStarted, onError }) => {
+  const MediaPlayer = dashjs.MediaPlayer || dashjs.default?.MediaPlayer || window.dashjs?.MediaPlayer;
+  if (!MediaPlayer) {
+    throw new Error('DASH player failed to load');
+  }
+
   const manifestUrl = createTileManifestUrl(tile.adaptationSetXml);
-  const player = dashjs.MediaPlayer().create();
+  const player = MediaPlayer().create();
   const authInterceptor = async (request) => {
     request.headers = {
       ...(request.headers || {}),
@@ -124,8 +129,8 @@ const createDashTilePlayer = ({ video, tile, headers, onStarted, onError }) => {
   });
 
   player.addRequestInterceptor(authInterceptor);
-  player.on(dashjs.MediaPlayer.events.PLAYBACK_STARTED, onStarted);
-  player.on(dashjs.MediaPlayer.events.ERROR, onError);
+  player.on(MediaPlayer.events.PLAYBACK_STARTED, onStarted);
+  player.on(MediaPlayer.events.ERROR, onError);
   player.initialize(video, manifestUrl, true);
 
   return {
@@ -133,8 +138,8 @@ const createDashTilePlayer = ({ video, tile, headers, onStarted, onError }) => {
     manifestUrl,
     destroy: () => {
       try {
-        player.off(dashjs.MediaPlayer.events.PLAYBACK_STARTED, onStarted);
-        player.off(dashjs.MediaPlayer.events.ERROR, onError);
+        player.off(MediaPlayer.events.PLAYBACK_STARTED, onStarted);
+        player.off(MediaPlayer.events.ERROR, onError);
         player.removeRequestInterceptor(authInterceptor);
         player.reset();
       } finally {
