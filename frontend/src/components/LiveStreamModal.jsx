@@ -307,6 +307,7 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
 
             return createDashTilePlayer({
               video,
+              tile,
               headers,
               onStarted: () => {
                 startedTiles += 1;
