@@ -3,6 +3,7 @@ import * as dashjs from 'dashjs';
 import { X, AlertCircle, Maximize2, Volume2, VolumeX } from 'lucide-react';
 
 const HDSM_PROTOTYPE_CAMERA_NAME = '4th St Apts 1st Flr Goldin Lobby Ent';
+const DASH_VIDEO_READY_EVENTS = ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'];
 
 const parseSrd = (value) => {
   const parts = (value || '').split(',').map((part) => Number(part));
@@ -97,6 +98,17 @@ const createDashTilePlayer = ({ video, tile, headers, onStarted, onError }) => {
 
   const manifestUrl = createTileManifestUrl(tile.adaptationSetXml);
   const player = MediaPlayer().create();
+  let hasStarted = false;
+  const notifyStarted = () => {
+    if (hasStarted) return;
+    hasStarted = true;
+    onStarted?.();
+  };
+  const handleVideoReady = () => notifyStarted();
+  const dashStartedEvent = MediaPlayer.events?.PLAYBACK_STARTED;
+  const dashPlayingEvent = MediaPlayer.events?.PLAYBACK_PLAYING;
+  const dashCanPlayEvent = MediaPlayer.events?.CAN_PLAY;
+  const dashErrorEvent = MediaPlayer.events?.ERROR;
   const authInterceptor = async (request) => {
     request.headers = {
       ...(request.headers || {}),
@@ -129,17 +141,39 @@ const createDashTilePlayer = ({ video, tile, headers, onStarted, onError }) => {
   });
 
   player.addRequestInterceptor(authInterceptor);
-  player.on(MediaPlayer.events.PLAYBACK_STARTED, onStarted);
-  player.on(MediaPlayer.events.ERROR, onError);
+  DASH_VIDEO_READY_EVENTS.forEach((eventName) => {
+    video.addEventListener(eventName, handleVideoReady);
+  });
+  [dashStartedEvent, dashPlayingEvent, dashCanPlayEvent].filter(Boolean).forEach((eventName) => {
+    player.on(eventName, notifyStarted);
+  });
+  if (dashErrorEvent) {
+    player.on(dashErrorEvent, onError);
+  }
   player.initialize(video, manifestUrl, true);
+  video.play().catch(() => {});
+
+  const readinessFallback = window.setTimeout(() => {
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA || video.networkState === HTMLMediaElement.NETWORK_LOADING) {
+      notifyStarted();
+    }
+  }, 5000);
 
   return {
     player,
     manifestUrl,
     destroy: () => {
       try {
-        player.off(MediaPlayer.events.PLAYBACK_STARTED, onStarted);
-        player.off(MediaPlayer.events.ERROR, onError);
+        window.clearTimeout(readinessFallback);
+        DASH_VIDEO_READY_EVENTS.forEach((eventName) => {
+          video.removeEventListener(eventName, handleVideoReady);
+        });
+        [dashStartedEvent, dashPlayingEvent, dashCanPlayEvent].filter(Boolean).forEach((eventName) => {
+          player.off(eventName, notifyStarted);
+        });
+        if (dashErrorEvent) {
+          player.off(dashErrorEvent, onError);
+        }
         player.removeRequestInterceptor(authInterceptor);
         player.reset();
       } finally {
