@@ -1,8 +1,22 @@
 import authService from '../services/authService.js';
+import { logger } from '../utils/logger.js';
+import {
+  setAuthCookies,
+  clearAuthCookies,
+  getRefreshTokenFromRequest,
+} from '../utils/authCookies.js';
+
+const publicUser = (user) => ({
+  id: user.id,
+  username: user.username,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+});
 
 /**
  * POST /api/auth/login
- * Authenticate user and return tokens
+ * Authenticate user and set HttpOnly auth cookies
  */
 export const login = async (req, res) => {
   try {
@@ -33,37 +47,30 @@ export const login = async (req, res) => {
 
     const accessToken = authService.generateAccessToken(user);
     const refreshToken = authService.generateRefreshToken(user);
+    setAuthCookies(res, req, { accessToken, refreshToken });
 
     res.json({
       success: true,
       data: {
-        user: {
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        },
-        accessToken,
-        refreshToken
+        user: publicUser(user)
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Login failed'
     });
   }
 };
 
 /**
  * POST /api/auth/refresh
- * Refresh access token using refresh token
+ * Refresh access token using HttpOnly refresh cookie (body token accepted for API clients)
  */
 export const refreshToken = async (req, res) => {
   try {
-    const { refreshToken: token } = req.body;
+    const token = getRefreshTokenFromRequest(req);
 
     if (!token) {
       return res.status(400).json({
@@ -76,6 +83,7 @@ export const refreshToken = async (req, res) => {
     try {
       decoded = authService.verifyRefreshToken(token);
     } catch (error) {
+      clearAuthCookies(res, req);
       return res.status(401).json({
         success: false,
         error: 'Invalid or expired refresh token'
@@ -84,6 +92,7 @@ export const refreshToken = async (req, res) => {
 
     const user = await authService.getUserById(decoded.id);
     if (!user) {
+      clearAuthCookies(res, req);
       return res.status(401).json({
         success: false,
         error: 'User not found'
@@ -91,39 +100,39 @@ export const refreshToken = async (req, res) => {
     }
 
     const accessToken = authService.generateAccessToken(user);
+    setAuthCookies(res, req, { accessToken });
 
     res.json({
       success: true,
       data: {
-        accessToken
+        user: publicUser(user)
       }
     });
   } catch (error) {
-    console.error('Token refresh error:', error);
+    logger.error('Token refresh error:', error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Token refresh failed'
     });
   }
 };
 
 /**
  * POST /api/auth/logout
- * Logout user (client-side token removal)
+ * Clear auth cookies. Public so expired sessions can still log out.
  */
 export const logout = async (req, res) => {
   try {
-    // In a more robust implementation, you could blacklist the refresh token here
-    // For now, we rely on client-side token removal
+    clearAuthCookies(res, req);
     res.json({
       success: true,
       data: { message: 'Logged out successfully' }
     });
   } catch (error) {
-    console.error('Logout error:', error);
+    logger.error('Logout error:', error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Logout failed'
     });
   }
 };
@@ -146,13 +155,7 @@ export const updateProfile = async (req, res) => {
     const updatedUser = await authService.updateUser(req.user.id, updates);
     res.json({
       success: true,
-      data: {
-        id: updatedUser.id,
-        username: updatedUser.username,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        role: updatedUser.role,
-      },
+      data: publicUser(updatedUser),
     });
   } catch (error) {
     const status = error.message === 'Email already exists' ? 409 : 500;
@@ -187,8 +190,8 @@ export const changePassword = async (req, res) => {
     await authService.updateUser(req.user.id, { password: newPassword });
     res.json({ success: true, data: { message: 'Password changed successfully' } });
   } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    logger.error('Change password error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to change password' });
   }
 };
 
@@ -208,19 +211,13 @@ export const getCurrentUser = async (req, res) => {
 
     res.json({
       success: true,
-      data: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
+      data: publicUser(user)
     });
   } catch (error) {
-    console.error('Get current user error:', error);
+    logger.error('Get current user error:', error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Failed to load user'
     });
   }
 };
