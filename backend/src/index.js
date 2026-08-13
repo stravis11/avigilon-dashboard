@@ -16,17 +16,25 @@ const result = dotenv.config({ path: envPath });
 
 // Import logger after dotenv so NODE_ENV is set
 const { logger } = await import('./utils/logger.js');
+const { resolveJwtSecrets } = await import('./utils/jwtSecrets.js');
+
+// Fail fast before any other services initialize
+resolveJwtSecrets(process.env);
 
 logger.info('Loading .env from:', envPath);
 if (result.error) {
-  console.error('Error loading .env file:', result.error);
+  logger.warn('No .env file loaded (using process environment)');
 } else {
   logger.info('.env file loaded successfully');
-  logger.info('ACC_USER_KEY present:', !!process.env.ACC_USER_KEY);
+  logger.info('ACC_USER_KEY present:', Boolean(process.env.ACC_USER_KEY));
 }
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Trust nginx / Vite proxy so Secure cookies and req.secure work
+app.set('trust proxy', 1);
 
 // Security middleware - configure to allow cross-origin images and video streaming
 app.use(helmet({
@@ -72,9 +80,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware (dev only)
-if (process.env.NODE_ENV !== 'production') {
+if (!isProduction) {
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    logger.debug(`${req.method} ${req.path}`);
     next();
   });
 }
@@ -148,10 +156,12 @@ await import('./services/zabbixServiceInstance.js');
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({
+  logger.error('Unhandled error:', err.message);
+  const status = err.status || 500;
+  const expose = !isProduction || status < 500;
+  res.status(status).json({
     success: false,
-    error: err.message || 'Internal server error',
+    error: expose ? (err.message || 'Internal server error') : 'Internal server error',
   });
 });
 
@@ -165,13 +175,18 @@ app.use((req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`
+  logger.info(`Avigilon ACC API Server running on http://localhost:${PORT} (${process.env.NODE_ENV || 'development'})`);
+  if (isProduction) {
+    console.log(`Avigilon ACC API Server listening on port ${PORT}`);
+  } else {
+    console.log(`
 ╔════════════════════════════════════════════════╗
 ║   Avigilon ACC API Server                      ║
 ║   Running on: http://localhost:${PORT}           ║
 ║   Environment: ${process.env.NODE_ENV || 'development'}                   ║
 ╚════════════════════════════════════════════════╝
   `);
+  }
 
   // Start background cache polling after server starts
   avigilonService.startBackgroundPolling();
