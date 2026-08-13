@@ -1,12 +1,12 @@
 import authService from '../services/authService.js';
+import { getAccessTokenFromRequest } from '../utils/authCookies.js';
 
 /**
- * Middleware to verify JWT access token
+ * Middleware to verify JWT access token from HttpOnly cookie or Bearer header.
  * Sets req.user with decoded token payload on success
  */
 export const authenticateToken = async (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = getAccessTokenFromRequest(req);
 
   if (!token) {
     return res.status(401).json({
