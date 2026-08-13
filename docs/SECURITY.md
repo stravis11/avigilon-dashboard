@@ -46,8 +46,9 @@ After deploy, log in once so any leftover `localStorage` tokens from older build
 
 - `logger.info` / `logger.debug` are development-only.
 - Object logs redact keys matching password/secret/token/authorization/cookie/nonce/api key/credential.
-- ACC login no longer dumps response bodies (those can echo credentials).
+- Startup no longer prints `.env` parse errors with extra context; ACC key presence is logged as a boolean in development only.
 - Unhandled 500 responses hide internal messages in production.
+- `avigilonService` still uses `console.error` for some ACC failures, including login response bodies. Treat that as a follow-up (do not log `error.response.data` in production).
 
 ## Left unchanged (known constraints)
 
