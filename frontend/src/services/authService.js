@@ -5,6 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const authClient = axios.create({
   baseURL: `${API_BASE_URL}/auth`,
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -12,7 +13,8 @@ const authClient = axios.create({
 
 const authService = {
   /**
-   * Login with username and password
+   * Login with username and password.
+   * Tokens are stored in HttpOnly cookies by the backend.
    */
   login: async (username, password) => {
     const response = await authClient.post('/login', { username, password });
@@ -20,21 +22,19 @@ const authService = {
   },
 
   /**
-   * Refresh access token using refresh token
+   * Refresh access token using the HttpOnly refresh cookie
    */
-  refreshToken: async (refreshToken) => {
-    const response = await authClient.post('/refresh', { refreshToken });
+  refreshToken: async () => {
+    const response = await authClient.post('/refresh');
     return response.data;
   },
 
   /**
-   * Logout user
+   * Logout user and clear auth cookies
    */
-  logout: async (accessToken) => {
+  logout: async () => {
     try {
-      await authClient.post('/logout', {}, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
+      await authClient.post('/logout');
     } catch (error) {
       // Ignore logout errors - we'll clear local state anyway
       console.warn('Logout request failed:', error.message);
@@ -44,10 +44,8 @@ const authService = {
   /**
    * Get current authenticated user info
    */
-  getCurrentUser: async (accessToken) => {
-    const response = await authClient.get('/me', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+  getCurrentUser: async () => {
+    const response = await authClient.get('/me');
     return response.data;
   },
 
@@ -56,20 +54,16 @@ const authService = {
   /**
    * Update current user's name and/or email
    */
-  updateProfile: async (accessToken, data) => {
-    const response = await authClient.put('/profile', data, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+  updateProfile: async (data) => {
+    const response = await authClient.put('/profile', data);
     return response.data;
   },
 
   /**
    * Change current user's password
    */
-  changePassword: async (accessToken, data) => {
-    const response = await authClient.put('/profile/password', data, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+  changePassword: async (data) => {
+    const response = await authClient.put('/profile/password', data);
     return response.data;
   },
 
@@ -78,40 +72,32 @@ const authService = {
   /**
    * Get all users (admin only)
    */
-  getUsers: async (accessToken) => {
-    const response = await authClient.get('/users', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+  getUsers: async () => {
+    const response = await authClient.get('/users');
     return response.data;
   },
 
   /**
    * Create a new user (admin only)
    */
-  createUser: async (accessToken, userData) => {
-    const response = await authClient.post('/users', userData, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+  createUser: async (userData) => {
+    const response = await authClient.post('/users', userData);
     return response.data;
   },
 
   /**
    * Update a user (admin only)
    */
-  updateUser: async (accessToken, userId, userData) => {
-    const response = await authClient.put(`/users/${userId}`, userData, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+  updateUser: async (userId, userData) => {
+    const response = await authClient.put(`/users/${userId}`, userData);
     return response.data;
   },
 
   /**
    * Delete a user (admin only)
    */
-  deleteUser: async (accessToken, userId) => {
-    const response = await authClient.delete(`/users/${userId}`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+  deleteUser: async (userId) => {
+    const response = await authClient.delete(`/users/${userId}`);
     return response.data;
   },
 };
