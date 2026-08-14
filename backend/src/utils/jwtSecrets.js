@@ -1,12 +1,13 @@
 /**
  * Resolve JWT signing secrets.
  * Production (NODE_ENV=production) refuses to start without unique,
- * non-default JWT_SECRET and JWT_REFRESH_SECRET values.
+ * non-default JWT_SECRET and JWT_REFRESH_SECRET values of at least 32 characters.
  * Development keeps explicit dev-only fallbacks for local docker-compose.
  */
 
 export const DEV_JWT_SECRET = 'dev-only-jwt-secret-do-not-use-in-production';
 export const DEV_JWT_REFRESH_SECRET = 'dev-only-jwt-refresh-secret-do-not-use-in-production';
+export const MIN_JWT_SECRET_LENGTH = 32;
 
 const LEGACY_UNSAFE_SECRETS = new Set([
   'avigilon-dashboard-secret-key-change-in-production',
@@ -19,6 +20,7 @@ export function isUnsafeSecret(value) {
   if (typeof value !== 'string') return true;
   const trimmed = value.trim();
   if (!trimmed) return true;
+  if (trimmed.length < MIN_JWT_SECRET_LENGTH) return true;
   return LEGACY_UNSAFE_SECRETS.has(trimmed);
 }
 
@@ -30,12 +32,12 @@ export function resolveJwtSecrets(env = process.env) {
   if (isProduction) {
     if (isUnsafeSecret(jwtSecret)) {
       throw new Error(
-        'FATAL: JWT_SECRET must be set to a unique non-default value when NODE_ENV=production. Generate one with: openssl rand -hex 32'
+        'FATAL: JWT_SECRET must be set to a unique non-default value of at least 32 characters when NODE_ENV=production. Generate one with: openssl rand -hex 32'
       );
     }
     if (isUnsafeSecret(jwtRefreshSecret)) {
       throw new Error(
-        'FATAL: JWT_REFRESH_SECRET must be set to a unique non-default value when NODE_ENV=production. Generate one with: openssl rand -hex 32'
+        'FATAL: JWT_REFRESH_SECRET must be set to a unique non-default value of at least 32 characters when NODE_ENV=production. Generate one with: openssl rand -hex 32'
       );
     }
     if (jwtSecret === jwtRefreshSecret) {

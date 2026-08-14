@@ -2,14 +2,13 @@ services:
   backend:
     build: ./backend
     container_name: avigilon-backend
-    ports:
-      - "3001:3001"
+    # Backend listen port is internal to the compose network only.
+    # SPA nginx proxies /api; do not map this port on the host.
     env_file:
       - ./backend/.env
     environment:
       - TOKEN_FETCHER_URL=http://token-fetcher:8080
     volumes:
-      # Persist user data
       - ./backend/src/data:/app/src/data
     restart: unless-stopped
     healthcheck:
