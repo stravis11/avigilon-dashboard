@@ -119,7 +119,7 @@ server {
 **1. Launch EC2 Instance:**
 - Amazon Linux 2 or Ubuntu
 - t3.medium or larger
-- Security group allowing ports 80, 443, and 3001
+- Security group allowing ports 80 and 443
 
 **2. Install dependencies:**
 ```bash
@@ -294,8 +294,7 @@ version: '3.8'
 services:
   backend:
     build: ./backend
-    ports:
-      - "3001:3001"
+    # Do not publish 3001; nginx on 80/443 proxies /api on the Docker network.
     environment:
       - NODE_ENV=production
       - ACC_SERVER_URL=${ACC_SERVER_URL}
@@ -365,7 +364,7 @@ ssl_session_timeout 10m;
 ### 3. Firewall Rules
 
 ```bash
-# Allow only necessary ports
+# Allow only necessary ports (do not expose backend 3001)
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw enable

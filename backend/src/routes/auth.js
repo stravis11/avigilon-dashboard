@@ -8,9 +8,10 @@ const router = express.Router();
 // Public routes (no auth required)
 router.post('/login', login);
 router.post('/refresh', refreshToken);
+// Logout is public so expired access cookies can still be cleared
+router.post('/logout', logout);
 
 // Protected routes (auth required)
-router.post('/logout', authenticateToken, logout);
 router.get('/me', authenticateToken, getCurrentUser);
 
 // Self-service profile routes (any authenticated user)

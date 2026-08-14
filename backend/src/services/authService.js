@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
 import { logger } from '../utils/logger.js';
+import { resolveJwtSecrets } from '../utils/jwtSecrets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,21 +12,9 @@ const __dirname = dirname(__filename);
 class AuthService {
   constructor() {
     this.usersFilePath = join(__dirname, '..', 'data', 'users.json');
-    this.jwtSecret = process.env.JWT_SECRET || 'avigilon-dashboard-secret-key-change-in-production';
-    this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'avigilon-refresh-secret-key-change-in-production';
-
-    if (process.env.NODE_ENV === 'production') {
-      const knownDefaults = [
-        'avigilon-dashboard-secret-key-change-in-production',
-        'avigilon-refresh-secret-key-change-in-production',
-      ];
-      if (!process.env.JWT_SECRET || knownDefaults.includes(process.env.JWT_SECRET)) {
-        throw new Error('FATAL: JWT_SECRET must be set to a secure value in production');
-      }
-      if (!process.env.JWT_REFRESH_SECRET || knownDefaults.includes(process.env.JWT_REFRESH_SECRET)) {
-        throw new Error('FATAL: JWT_REFRESH_SECRET must be set to a secure value in production');
-      }
-    }
+    const { jwtSecret, jwtRefreshSecret } = resolveJwtSecrets(process.env);
+    this.jwtSecret = jwtSecret;
+    this.jwtRefreshSecret = jwtRefreshSecret;
     this.users = [];
     this.initialized = false;
   }
@@ -59,7 +48,7 @@ class AuthService {
         this.users = [defaultAdmin];
         await this.saveUsers();
       } else {
-        console.error('Error loading users:', error);
+        logger.error('Error loading users:', error.message);
         throw error;
       }
     }
@@ -70,7 +59,7 @@ class AuthService {
       const data = JSON.stringify({ users: this.users }, null, 2);
       await fs.writeFile(this.usersFilePath, data, 'utf-8');
     } catch (error) {
-      console.error('Error saving users:', error);
+      logger.error('Error saving users:', error.message);
       throw error;
     }
   }

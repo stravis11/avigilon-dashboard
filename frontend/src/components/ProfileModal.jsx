@@ -9,7 +9,7 @@ import authService from '../services/authService';
  *   'password'  — change password (requires current password)
  */
 const ProfileModal = ({ mode, onClose }) => {
-  const { user, accessToken, updateUser } = useAuth();
+  const { user, updateUser } = useAuth();
   const isSettings = mode === 'settings';
 
   // Settings form
@@ -37,7 +37,7 @@ const ProfileModal = ({ mode, onClose }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await authService.updateProfile(accessToken, {
+      const response = await authService.updateProfile({
         name: name.trim(),
         email: email.trim(),
       });
@@ -72,7 +72,7 @@ const ProfileModal = ({ mode, onClose }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await authService.changePassword(accessToken, { currentPassword, newPassword });
+      const response = await authService.changePassword({ currentPassword, newPassword });
       if (response.success) {
         setSuccess(true);
         setTimeout(onClose, 1200);

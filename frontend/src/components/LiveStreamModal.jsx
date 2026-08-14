@@ -17,14 +17,10 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
 
     const initStream = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const fetchOpts = { credentials: 'include', signal: abortController.signal };
 
         // 1. Fetch the MPD manifest to get codec info and stream URL
-        const manifestRes = await fetch(`/api/cameras/${cameraId}/stream/manifest`, {
-          headers,
-          signal: abortController.signal
-        });
+        const manifestRes = await fetch(`/api/cameras/${cameraId}/stream/manifest`, fetchOpts);
         if (!manifestRes.ok) throw new Error(`Manifest request failed: ${manifestRes.status}`);
 
         const mpdText = await manifestRes.text();
@@ -71,10 +67,7 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
         const sourceBuffer = mediaSource.addSourceBuffer(fullMime);
 
         // 5. Fetch the video stream from the proxy
-        const streamRes = await fetch(streamUrl, {
-          headers,
-          signal: abortController.signal
-        });
+        const streamRes = await fetch(streamUrl, fetchOpts);
         if (!streamRes.ok) throw new Error(`Stream request failed: ${streamRes.status}`);
         if (!streamRes.body) throw new Error('ReadableStream not supported');
 

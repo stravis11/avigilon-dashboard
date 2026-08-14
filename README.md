@@ -122,8 +122,8 @@ docker compose up -d
 
 ### 4. Access the Application
 
-- Frontend: http://localhost or https://localhost
-- Backend API: http://localhost:3001
+- Frontend / API: http://localhost or https://localhost (nginx proxies `/api` to the backend)
+- The backend listen port is internal to the Docker network and is not published on the host
 
 ### 5. Login
 
@@ -142,7 +142,7 @@ Use the default admin credentials:
 │  ┌──────────────┐        ┌──────────────────────┐               │
 │  │   Frontend   │        │      Backend         │               │
 │  │   (nginx)    │ ────>  │   (Node.js/Express)  │               │
-│  │  Ports 80/443│        │      Port 3001       │               │
+│  │  Ports 80/443│        │  Port 3001 (internal)│               │
 │  └──────────────┘        └──────────────────────┘               │
 │                                    ▲                             │
 │                                    │ POST /api/cloud/token-submit│
@@ -156,7 +156,7 @@ Use the default admin credentials:
 
 **Services:**
 - **Frontend**: nginx serving the React build, proxies `/api/` requests to the backend
-- **Backend**: Node.js Express API with health checks, ACC proxy, ArcGIS map feed, Zabbix integration, and cloud API integration
+- **Backend**: Node.js Express API with health checks, ACC proxy, ArcGIS map feed, Zabbix integration, and cloud API integration. Listen port 3001 is internal to the Docker network (not published); nginx on 80/443 is the public API path.
 - **Token Fetcher**: Python sidecar with headless Chromium that automates Avigilon Cloud login to capture JWT tokens. Runs every 24 hours and supports on-demand refresh via the Cloud page.
 - **Data persistence**: User data stored in a mounted volume (`backend/src/data/`)
 
@@ -254,7 +254,8 @@ avigilon-dashboard/
 │   │   │   ├── authController.js        # Login/logout handlers
 │   │   │   └── userController.js        # User CRUD handlers
 │   │   ├── middleware/
-│   │   │   └── authMiddleware.js        # JWT verification
+│   │   │   ├── authMiddleware.js        # JWT verification
+│   │   │   └── csrf.js                  # Origin + JSON CSRF protections
 │   │   ├── routes/
 │   │   │   ├── api.js                   # ACC & Cloud API routes
 │   │   │   └── auth.js                  # Auth routes
@@ -433,6 +434,9 @@ These backend routes are retained for research, but recording headroom/capacity 
 7. **Default Admin** — Change the default admin password after first login
 8. **Cloud credentials** — The token-fetcher runs on an internal Docker network; cloud credentials never leave the server
 9. **ArcGIS credentials** — The ArcGIS API key stays backend-side and is never exposed directly to the frontend
+10. **JWT secrets** — In production, `JWT_SECRET` and `JWT_REFRESH_SECRET` must be unique and at least 32 characters (`openssl rand -hex 32`)
+11. **CSRF** — Cookie-authenticated mutating requests require a matching Origin/Referer and JSON bodies; HTML form posts are rejected
+12. **Backend port** — Do not publish Docker port 3001; `trust proxy` is only safe behind nginx
 
 ## Troubleshooting
 

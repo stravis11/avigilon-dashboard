@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import authService from '../services/authService';
 
 const UserManagement = () => {
-  const { accessToken, user: currentUser } = useAuth();
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,13 +23,13 @@ const UserManagement = () => {
 
   useEffect(() => {
     loadUsers();
-  }, [accessToken]);
+  }, []);
 
   const loadUsers = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await authService.getUsers(accessToken);
+      const response = await authService.getUsers();
       if (response.success) {
         setUsers(response.data);
       }
@@ -52,14 +52,14 @@ const UserManagement = () => {
         if (!updateData.password) {
           delete updateData.password; // Don't send empty password
         }
-        const response = await authService.updateUser(accessToken, editingUser.id, updateData);
+        const response = await authService.updateUser(editingUser.id, updateData);
         if (response.success) {
           setUsers(users.map(u => u.id === editingUser.id ? response.data : u));
           closeModal();
         }
       } else {
         // Create new user
-        const response = await authService.createUser(accessToken, formData);
+        const response = await authService.createUser(formData);
         if (response.success) {
           setUsers([...users, response.data]);
           closeModal();
@@ -76,7 +76,7 @@ const UserManagement = () => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
 
     try {
-      await authService.deleteUser(accessToken, userId);
+      await authService.deleteUser(userId);
       setUsers(users.filter(u => u.id !== userId));
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Failed to delete user');
