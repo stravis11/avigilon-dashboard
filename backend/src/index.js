@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { csrfProtection } from './middleware/csrf.js';
 
 // Get directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -33,7 +34,11 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Trust nginx / Vite proxy so Secure cookies and req.secure work
+// Trust the first hop (nginx on the Docker network) so Secure cookies and
+// req.ip / rate limiting see the real client. Safe only because port 3001 is
+// not published to the host; clients reach the API via nginx on 80/443.
+// If you bind 3001 for local debug, keep it on 127.0.0.1 — a world-reachable
+// 3001 lets callers spoof X-Forwarded-For.
 app.set('trust proxy', 1);
 
 // Security middleware - configure to allow cross-origin images and video streaming
@@ -75,9 +80,9 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Body parsing middleware
+// Body parsing middleware (JSON only; form bodies are rejected by csrfProtection)
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(csrfProtection);
 
 // Request logging middleware (dev only)
 if (!isProduction) {
