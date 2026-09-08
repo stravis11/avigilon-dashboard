@@ -1,0 +1,19 @@
+# Build frontend/dist with `cd frontend && npm ci && npm run build` first.
+# This frontend uses the existing test server's backend and certificate files.
+services:
+  frontend:
+    image: nginx:alpine
+    container_name: avigilon-stats-test
+    ports:
+      - "8443:443"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${TEST_CERTS_DIR:?Set TEST_CERTS_DIR to the test server certificate directory}:/etc/nginx/certs:ro
+    restart: unless-stopped
+    networks:
+      - dashboard
+networks:
+  dashboard:
+    external: true
+    name: avigilon-network
