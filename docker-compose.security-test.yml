@@ -1,0 +1,42 @@
+# Build frontend/dist first. backend/.env and backend/src/data are test-only copies.
+services:
+  security-backend:
+    build: ./backend
+    image: avigilon-security-backend:test
+    container_name: avigilon-security-backend
+    env_file: ./backend/.env
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY: "1"
+      TOKEN_FETCHER_URL: http://token-fetcher:8080
+    volumes:
+      - ./backend/src/data:/app/src/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks:
+      dashboard:
+        # The existing token-fetcher submits fresh cloud tokens to this alias.
+        aliases: [backend]
+  security-frontend:
+    image: nginx:alpine
+    container_name: avigilon-security-frontend
+    ports:
+      - "443:443"
+      - "127.0.0.1:9080:8080"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/nginx.security-test.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${TEST_CERTS_DIR:?Set TEST_CERTS_DIR}:/etc/nginx/certs:ro
+    depends_on:
+      security-backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [dashboard]
+networks:
+  dashboard:
+    external: true
+    name: avigilon-network

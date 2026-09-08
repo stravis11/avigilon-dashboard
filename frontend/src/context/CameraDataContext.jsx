@@ -33,26 +33,32 @@ export const CameraDataProvider = ({ children }) => {
 
   // Prevent duplicate concurrent fetches
   const fetchingRef = useRef(false);
+  const epochRef = useRef(0);
 
   const fetchAll = useCallback(async ({ triggerBackendRefresh = false } = {}) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
+    const epoch = epochRef.current;
     setLoading(true);
     setError(null);
 
     try {
+      let refreshError = null;
       // Optionally tell the backend to re-poll ACC first
       if (triggerBackendRefresh) {
-        await apiService.refreshCache();
+        try { await apiService.refreshCache(); } catch (err) { refreshError = err; }
       }
 
       // Fetch all core data in parallel from backend cache
-      const [serversRes, camerasRes, sitesRes, statsRes] = await Promise.allSettled([
+      const [serversRes, camerasRes, sitesRes, statsRes, cacheRes] = await Promise.allSettled([
         apiService.getServers(),
         apiService.getCameras(),
         apiService.getSites(),
         apiService.getDashboardStats(),
+        apiService.getCacheStatus(),
       ]);
+
+      if (epoch !== epochRef.current) return;
 
       if (serversRes.status === 'fulfilled') {
         setServers(extractArray(serversRes.value, 'servers'));
@@ -74,12 +80,15 @@ export const CameraDataProvider = ({ children }) => {
         setError(camerasRes.reason?.message || 'Failed to load data');
       }
 
-      setLastRefreshed(new Date());
+      const cache = cacheRes.status === 'fulfilled' ? cacheRes.value?.data : null;
+      if (refreshError || cache?.isStale) {
+        setError('Camera data could not be refreshed. Showing the last available inventory' + (cache?.lastRefreshed ? ` from ${new Date(cache.lastRefreshed).toLocaleString()}.` : '.'));
+      }
+      setLastRefreshed(cache?.lastRefreshed ? new Date(cache.lastRefreshed) : null);
     } catch (err) {
-      setError(err.message);
+      if (epoch === epochRef.current) setError(err.message);
     } finally {
-      setLoading(false);
-      fetchingRef.current = false;
+      if (epoch === epochRef.current) { setLoading(false); fetchingRef.current = false; }
     }
   }, []);
 
@@ -87,6 +96,9 @@ export const CameraDataProvider = ({ children }) => {
   useEffect(() => {
     if (isAuthenticated) {
       fetchAll();
+    } else {
+      epochRef.current += 1; fetchingRef.current = false; setLoading(false); setError(null);
+      setCameras([]); setServers([]); setSites([]); setDashboardStats(null); setLastRefreshed(null);
     }
   }, [isAuthenticated, fetchAll]);
 

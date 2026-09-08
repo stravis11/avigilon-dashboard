@@ -40,6 +40,7 @@ describe('Camera Statistics drill-down', () => {
       render(<CameraStats />);
       click(new RegExp(`^${title}`));
       expectRows(devices ? 4 : 5, state);
+      expect(screen.getByRole('button', { name: /^Avigilon / }).textContent).toContain('50.00%');
       click(/^Avigilon /);
       expectRows(devices ? 2 : 3, state);
       expect(screen.getByRole('heading', { name: `${title} — Avigilon` })).toBeTruthy();

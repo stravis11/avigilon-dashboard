@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { randomBytes } from 'node:crypto';
+import express from 'express';
+process.env.JWT_SECRET = randomBytes(32).toString('hex');
+process.env.JWT_REFRESH_SECRET = randomBytes(32).toString('hex');
+const { default: auth } = await import('../src/services/authService.js');
+const { default: routes } = await import('../src/routes/auth.js');
+
+test('HTTP login, refresh, password reset and logout enforce revocation', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dashboard-routes-'));
+  auth.usersFilePath = path.join(dir, 'users.json');
+  await fs.writeFile(auth.usersFilePath, '{"users":[]}');
+  await auth.initialize();
+  const admin = await auth.createUser({ username: 'admin', name: 'Admin', email: 'admin@example.test', role: 'admin', password: 'testing-password' });
+  const app = express(); app.use(express.json()); app.use('/api/auth', routes);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(async () => { server.closeAllConnections(); server.close(); await fs.rm(dir, { recursive: true, force: true }); });
+  const call = async (method, route, body, token) => {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/auth${route}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    return { status: res.status, body: await res.json() };
+  };
+  assert.equal((await call('POST', '/login', { username: 'admin', password: 'wrong' })).status, 401);
+  const login = await call('POST', '/login', { username: 'admin', password: 'testing-password' });
+  assert.equal(login.status, 200); assert.equal(login.body.data.user.password, undefined);
+  const { accessToken, refreshToken } = login.body.data;
+  assert.equal((await call('POST', '/refresh', { refreshToken })).status, 200);
+  const users = await call('GET', '/users', null, accessToken);
+  assert.equal(users.status, 200); assert.equal(users.body.data[0].password, undefined);
+  assert.equal((await call('PUT', `/users/${admin.id}`, { role: 'user' }, accessToken)).status, 400);
+  assert.equal((await call('PUT', '/profile/password', { currentPassword: 'testing-password', newPassword: 'replacement-password' }, accessToken)).status, 200);
+  assert.equal((await call('GET', '/users', null, accessToken)).status, 401);
+  assert.equal((await call('POST', '/refresh', { refreshToken })).status, 401);
+  const again = await call('POST', '/login', { username: 'admin', password: 'replacement-password' });
+  assert.equal((await call('POST', '/logout', {}, again.body.data.accessToken)).status, 200);
+  assert.equal((await call('POST', '/refresh', { refreshToken: again.body.data.refreshToken })).status, 401);
+});

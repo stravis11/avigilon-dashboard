@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { authenticatedFetch, API_BASE_URL } from '../services/sessionClient';
 import { X, AlertCircle, Maximize2, Volume2, VolumeX } from 'lucide-react';
 
 const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
@@ -12,17 +13,15 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
 
   useEffect(() => {
     let destroyed = false;
+    let mediaUrl = null;
     const abortController = new AbortController();
     abortRef.current = abortController;
 
     const initStream = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
         // 1. Fetch the MPD manifest to get codec info and stream URL
-        const manifestRes = await fetch(`/api/cameras/${cameraId}/stream/manifest`, {
-          headers,
+        const manifestRes = await authenticatedFetch(`${API_BASE_URL}/cameras/${cameraId}/stream/manifest`, {
           signal: abortController.signal
         });
         if (!manifestRes.ok) throw new Error(`Manifest request failed: ${manifestRes.status}`);
@@ -59,7 +58,8 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
         const video = videoRef.current;
         if (!video || destroyed) return;
 
-        video.src = URL.createObjectURL(mediaSource);
+        mediaUrl = URL.createObjectURL(mediaSource);
+        video.src = mediaUrl;
 
         await new Promise((resolve, reject) => {
           mediaSource.addEventListener('sourceopen', resolve, { once: true });
@@ -71,8 +71,7 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
         const sourceBuffer = mediaSource.addSourceBuffer(fullMime);
 
         // 5. Fetch the video stream from the proxy
-        const streamRes = await fetch(streamUrl, {
-          headers,
+        const streamRes = await authenticatedFetch(streamUrl, {
           signal: abortController.signal
         });
         if (!streamRes.ok) throw new Error(`Stream request failed: ${streamRes.status}`);
@@ -156,6 +155,7 @@ const LiveStreamModal = ({ cameraId, cameraName, onClose }) => {
     return () => {
       destroyed = true;
       abortController.abort();
+      if (mediaUrl) URL.revokeObjectURL(mediaUrl);
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.src = '';

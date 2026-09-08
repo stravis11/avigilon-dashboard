@@ -16,7 +16,7 @@ const GRID_COLUMN_CLASSES = {
 };
 
 // Thumbnail component with lazy loading and staggered requests
-const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick, className = 'w-16 h-11 sm:w-20 sm:h-14' }) => {
+export const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick, className = 'w-16 h-11 sm:w-20 sm:h-14' }) => {
   const [status, setStatus] = useState('idle'); // idle, waiting, loading, loaded, error
   const [shouldLoad, setShouldLoad] = useState(false);
   const [imageSrc, setImageSrc] = useState(null);
@@ -24,12 +24,13 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick, classNa
 
   // Use Intersection Observer to detect when thumbnail is visible
   useEffect(() => {
+    let timer;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
           // Stagger loading: delay based on index to spread out requests
           const delay = (index % 10) * 100; // 0-900ms delay, cycles every 10 items
-          setTimeout(() => setShouldLoad(true), delay);
+          timer = setTimeout(() => setShouldLoad(true), delay);
           observer.disconnect();
         }
       },
@@ -40,7 +41,7 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick, classNa
       observer.observe(containerRef.current);
     }
 
-    return () => observer.disconnect();
+    return () => { clearTimeout(timer); observer.disconnect(); };
   }, [index]);
 
   // Fetch image with authentication when shouldLoad is true
@@ -48,10 +49,13 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick, classNa
     if (!shouldLoad) return;
 
     let cancelled = false;
+    let objectUrl = null;
     setStatus('loading');
 
     apiService.fetchCameraSnapshotBlob(cameraId)
       .then((blobUrl) => {
+        objectUrl = blobUrl;
+        if (cancelled) URL.revokeObjectURL(blobUrl);
         if (!cancelled) {
           setImageSrc(blobUrl);
           setStatus('loaded');
@@ -65,8 +69,8 @@ const CameraThumbnail = ({ cameraId, cameraName, index = 0, onLiveClick, classNa
 
     return () => {
       cancelled = true;
-      if (imageSrc) {
-        URL.revokeObjectURL(imageSrc);
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
       }
     };
   }, [shouldLoad, cameraId]);

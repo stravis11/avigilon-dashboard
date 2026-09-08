@@ -15,7 +15,7 @@ export const getUsers = async (req, res) => {
     });
   } catch (error) {
     console.error('Get users error:', error);
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       error: error.message
     });
@@ -48,10 +48,10 @@ export const createUser = async (req, res) => {
     }
 
     // Validate password length
-    if (password.length < 6) {
+    if (password.length < 8) {
       return res.status(400).json({
         success: false,
-        error: 'Password must be at least 6 characters'
+        error: 'Password must be at least 8 characters'
       });
     }
 
@@ -84,7 +84,7 @@ export const createUser = async (req, res) => {
         error: error.message
       });
     }
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       error: error.message
     });
@@ -120,10 +120,10 @@ export const updateUser = async (req, res) => {
     }
 
     // Validate password length if provided
-    if (password && password.length < 6) {
+    if (password && password.length < 8) {
       return res.status(400).json({
         success: false,
-        error: 'Password must be at least 6 characters'
+        error: 'Password must be at least 8 characters'
       });
     }
 
@@ -156,7 +156,7 @@ export const updateUser = async (req, res) => {
         error: error.message
       });
     }
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       error: error.message
     });
@@ -199,7 +199,7 @@ export const deleteUser = async (req, res) => {
         error: error.message
       });
     }
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       error: error.message
     });

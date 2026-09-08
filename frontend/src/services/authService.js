@@ -1,14 +1,5 @@
-import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
-
-const authClient = axios.create({
-  baseURL: `${API_BASE_URL}/auth`,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+import { API_BASE_URL, createSessionClient, clearSession } from './sessionClient';
+const authClient = createSessionClient(`${API_BASE_URL}/auth`);
 
 const authService = {
   /**
@@ -70,6 +61,7 @@ const authService = {
     const response = await authClient.put('/profile/password', data, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    if (response.data.success) clearSession();
     return response.data;
   },
 

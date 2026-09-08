@@ -139,8 +139,8 @@ export const exportPDF = async ({
   detailCameras,
 }) => {
   // Lazy-load heavy PDF libraries only when needed
-  const { default: jsPDF } = await import('jspdf');
-  await import('jspdf-autotable');
+  const { jsPDF } = await import('jspdf');
+  const { autoTable } = await import('jspdf-autotable');
 
   const onlineCount = filteredCount - offlineCount;
   const mfrModelData = buildMfrModelData(cameras, mfrBreakdown);
@@ -193,7 +193,7 @@ export const exportPDF = async ({
   };
 
   const addTable = (options) => {
-    doc.autoTable({ startY: y, ...tableDefaults, ...options });
+    autoTable(doc, { startY: y, ...tableDefaults, ...options });
     y = doc.lastAutoTable.finalY + 7;
   };
 

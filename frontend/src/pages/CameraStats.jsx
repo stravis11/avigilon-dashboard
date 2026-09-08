@@ -118,7 +118,7 @@ const CameraStats = () => {
         [selectedLabel, selectedCount, pctText(selectedCount, totalCount)],
         [totalLabel, totalCount, '100.00%'],
       ],
-      breakdownTotal: selectedBreakdownTotal,
+      breakdownTotal: mfrBreakdownTotal,
       detailTitle: `${title} (${selectedDetail.length})`,
       detailCameras: selectedDetail,
     });
@@ -136,7 +136,7 @@ const CameraStats = () => {
       return selectedReport('Camera Devices Offline', 'Camera Devices Offline', offlineDeviceCount, 'Total Active Camera Devices', totalDevices);
     }
 
-    return { cameras, filteredCount, offlineCount, mfrBreakdown, servers };
+    return { cameras: nonMigratedCameras, filteredCount: activeCount, offlineCount, mfrBreakdown, breakdownTotal: mfrBreakdownTotal, servers };
   };
 
   const handleExport = async (format) => {
@@ -246,6 +246,8 @@ const CameraStats = () => {
   const mfrBreakdown = Object.entries(mfrDeviceKeys)
     .map(([mfr, keys]) => [mfr, keys.size])
     .sort(([, a], [, b]) => b - a);
+
+  const mfrBreakdownTotal = new Set(mfrPoolBase.map(deviceKey)).size;
 
   // All cameras for the selected manufacturer (from same offline-aware pool)
   const mfrCameras = selectedMfr ? mfrPoolBase.filter(c => normalizeMfr(c.manufacturer) === selectedMfr) : [];
@@ -656,7 +658,7 @@ const CameraStats = () => {
                     <div
                       key={mfr}
                       className="h-full cursor-pointer transition-opacity hover:opacity-80"
-                      style={{ width: `${(count / mfrPoolBase.length) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }}
+                      style={{ width: `${(count / mfrBreakdownTotal) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }}
                       title={`${mfr}: ${count} device${count !== 1 ? 's' : ''}`}
                       onClick={() => handleMfrClick(mfr)}
                     />
@@ -666,7 +668,7 @@ const CameraStats = () => {
                 {/* Manufacturer cards */}
                 <div className="flex flex-wrap gap-3">
                   {mfrBreakdown.map(([mfr, count], i) => {
-                    const pct = (count / mfrPoolBase.length) * 100;
+                    const pct = (count / mfrBreakdownTotal) * 100;
                     const isSelected = selectedMfr === mfr;
                     return (
                       <button

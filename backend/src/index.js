@@ -27,6 +27,8 @@ if (result.error) {
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+// Compose exposes the backend on loopback only; nginx is the single trusted hop.
+if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 
 // Security middleware - configure to allow cross-origin images and video streaming
 app.use(helmet({
@@ -106,6 +108,13 @@ const { default: authRoutes } = await import('./routes/auth.js');
 const { authenticateToken } = await import('./middleware/authMiddleware.js');
 
 // Mount auth routes (public endpoints for login/refresh)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  skipSuccessfulRequests: true,
+  message: { success: false, error: 'Too many login attempts. Please try again later.' },
+});
+app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth', authRoutes);
 
 // Import API routes

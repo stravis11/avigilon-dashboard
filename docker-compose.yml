@@ -3,10 +3,12 @@ services:
     build: ./backend
     container_name: avigilon-backend
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     env_file:
       - ./backend/.env
     environment:
+      - NODE_ENV=production
+      - TRUST_PROXY=1
       - TOKEN_FETCHER_URL=http://token-fetcher:8080
     volumes:
       # Persist user data

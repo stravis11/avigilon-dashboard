@@ -38,6 +38,8 @@ class AvigilonService {
 
     // Background polling interval (1 hour) — keeps cache warm so user requests are instant
     this._pollInterval = null;
+    this._pendingPoll = null;
+    this.lastPollError = null;
     this._pollIntervalMs = 3600000; // 1 hour
     this._cacheReady = null;          // Promise that resolves when first poll completes
     this._cacheReadyResolve = null;
@@ -108,7 +110,7 @@ class AvigilonService {
       (response) => response,
       async (error) => {
         const originalRequest = error.config;
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry && originalRequest.url !== '/mt/api/rest/v1/login') {
           originalRequest._retry = true;
           // Session expired, re-authenticate
           logger.info('Session expired, re-authenticating...');
@@ -126,7 +128,7 @@ class AvigilonService {
    */
   getCached(key) {
     const cached = this.cache.get(key);
-    if (cached && Date.now() < cached.expiry) {
+    if (cached && (Date.now() < cached.expiry || ['serverIds', 'sites', 'cameras_default', 'dashboard_stats'].includes(key))) {
       logger.debug(`Cache hit for ${key}`);
       return cached.data;
     }
@@ -191,6 +193,12 @@ class AvigilonService {
    * On failure the previous cached data is kept (stale-while-error).
    */
   async _pollCache() {
+    if (this._pendingPoll) return this._pendingPoll;
+    this._pendingPoll = this._doPollCache().finally(() => { this._pendingPoll = null; });
+    return this._pendingPoll;
+  }
+
+  async _doPollCache() {
     logger.info('Background cache poll starting...');
     try {
       await this.ensureSession();
@@ -201,22 +209,23 @@ class AvigilonService {
         this._fetchAndCache('cameras_default', () => this.axiosInstance.get('/mt/api/rest/v1/cameras').then(r => r.data)),
       ]);
 
-      // Dashboard stats depend on cameras + servers, so compute after they are cached
-      try {
-        const stats = await this.getDashboardStats();
-        // getDashboardStats already caches itself
-      } catch (e) {
-        logger.warn('Background poll: dashboard stats failed:', e.message);
-      }
-
       const results = {
         serverIds: serversResult.status === 'fulfilled' ? 'OK' : 'FAILED',
         sites: sitesResult.status === 'fulfilled' ? 'OK' : 'FAILED',
         cameras: camerasResult.status === 'fulfilled' ? 'OK' : 'FAILED',
       };
+      const failed = Object.entries(results).filter(([, status]) => status === 'FAILED').map(([key]) => key);
+      if (failed.length) throw new Error(`Could not refresh ${failed.join(', ')}`);
+      // Force derived counts to be recomputed from this successful inventory poll.
+      this.cache.delete('dashboard_stats');
+      await this.getDashboardStats();
+      this.lastPollError = null;
       logger.info('Background cache poll complete:', results);
+      return { success: true };
     } catch (error) {
+      this.lastPollError = error.message;
       logger.error('Background cache poll failed:', error.message);
+      return { success: false, error: error.message };
     }
   }
 
@@ -241,8 +250,8 @@ class AvigilonService {
    */
   async refreshCache() {
     logger.info('Manual cache refresh triggered');
-    this.cache.clear();
-    await this._pollCache();
+    const result = await this._pollCache();
+    if (!result.success) throw new Error(result.error);
   }
 
   /**
@@ -255,6 +264,8 @@ class AvigilonService {
         lastRefreshed: new Date(entry.expiry - this.cacheTTL).toISOString(),
         expiresAt: new Date(entry.expiry).toISOString(),
         ageMs: Date.now() - (entry.expiry - this.cacheTTL),
+        isStale: Date.now() >= entry.expiry || Boolean(this.lastPollError),
+        lastError: this.lastPollError,
       };
     }
     return null;

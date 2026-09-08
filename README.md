@@ -80,7 +80,12 @@ cp backend/.env.example backend/.env
 
 ```env
 PORT=3001
-NODE_ENV=development
+NODE_ENV=production
+# Generate each independently with: openssl rand -hex 32
+JWT_SECRET=your_first_random_secret_at_least_32_characters
+JWT_REFRESH_SECRET=your_second_distinct_random_secret_at_least_32_characters
+# Only for a NEW account store; at least 12 characters, max 72 bytes.
+BOOTSTRAP_ADMIN_PASSWORD=your_initial_admin_password
 
 # Your ACC Server Details
 ACC_SERVER_URL=https://your-acc-server-ip:8443
@@ -127,11 +132,9 @@ docker compose up -d
 
 ### 5. Login
 
-Use the default admin credentials:
-- **Username:** `admin`
-- **Password:** `Avigilon`
+For a new install, sign in as `admin` with the password you set in `BOOTSTRAP_ADMIN_PASSWORD`. There is no shared default password. Remove that bootstrap variable after the first account is created.
 
-> **Note:** Change the default password after first login.
+For an existing install, preserve `backend/src/data/users.json` before updating the checkout, then restore it into that ignored runtime path before starting the service. This release removes the old tracked account file. Existing account IDs and password hashes are retained; all users sign in again to establish revocable sessions. See [security test deployment](docs/security-reliability-test.md) for migration and rollback details.
 
 ## Docker Architecture
 

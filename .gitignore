@@ -35,3 +35,7 @@ coverage/
 *.tgz
 .npm
 .eslintcache
+
+# Runtime account/session store
+backend/src/data/users.json
+backend/src/data/*.tmp
