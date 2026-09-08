@@ -1,6 +1,6 @@
 # Security and reliability test release
 
-Branch: `codex/security-reliability-fixes`. Main remains unchanged until user acceptance.
+Tested on `codex/security-reliability-fixes` and merged into `main` at `fc19e88` after user acceptance on September 8, 2026. The deployment instructions below describe the retained test environment.
 
 ## Changes
 

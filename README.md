@@ -31,6 +31,8 @@ A full-stack web application for managing and monitoring Avigilon Control Center
 - **Cloud Hardware Health**: Monitor PSUs, temperatures, cooling, disks, CPU, and memory via Avigilon Cloud HMS API
 - **Zabbix Hardware Details**: Pull supplemental SNMP hardware and OS data from Zabbix
 - **Automated Token Fetcher**: Docker sidecar that automatically captures cloud JWT tokens every 24 hours
+- **Camera Statistics**: All four status cards filter the camera list by status, manufacturer, and model; manufacturer percentages count physical devices
+- **Inventory Recovery**: Keep the last successful camera inventory during refresh failures and show when data is stale
 - **Camera Management**: Browse all cameras, view snapshots, and manage camera settings
 - **Site Information**: Access detailed information about ACC sites
 - **Real-time Status**: Monitor connection status and camera availability
@@ -42,7 +44,7 @@ A full-stack web application for managing and monitoring Avigilon Control Center
 Before you begin, ensure you have the following installed:
 
 - **Docker and Docker Compose** (recommended for deployment)
-- **Node.js** (v18 or higher) — only needed for local development without Docker
+- **Node.js 22** (matches the Docker images) — only needed for local development without Docker
 - **Avigilon Control Center** (ACC 6 or ACC 7)
 - **ACC Web Endpoint Service** installed on your ACC server
 - **API Credentials**: User nonce and user key from Avigilon Technology Partner Program
@@ -118,6 +120,8 @@ ARCGIS_CACHE_TTL_MS=3600000
 ALLOWED_ORIGINS=http://localhost,http://localhost:5173
 ```
 
+Before starting nginx, place a certificate valid for your dashboard hostname at `certs/server.crt` and its private key at `certs/server.key`. The standard configuration redirects HTTP to HTTPS. Set `ALLOWED_ORIGINS` to include your dashboard's HTTPS origin.
+
 ### 3. Build and Start
 
 ```bash
@@ -127,14 +131,14 @@ docker compose up -d
 
 ### 4. Access the Application
 
-- Frontend: http://localhost or https://localhost
-- Backend API: http://localhost:3001
+- Frontend: `https://<your-dashboard-host>` (HTTP redirects to HTTPS)
+- Backend health check on the Docker host: `http://127.0.0.1:3001/api/health`. Remote clients access the API through the frontend HTTPS proxy.
 
 ### 5. Login
 
 For a new install, sign in as `admin` with the password you set in `BOOTSTRAP_ADMIN_PASSWORD`. There is no shared default password. Remove that bootstrap variable after the first account is created.
 
-For an existing install, preserve `backend/src/data/users.json` before updating the checkout, then restore it into that ignored runtime path before starting the service. This release removes the old tracked account file. Existing account IDs and password hashes are retained; all users sign in again to establish revocable sessions. See [security test deployment](docs/security-reliability-test.md) for migration and rollback details.
+For an existing install, preserve `backend/src/data/users.json` before updating the checkout, then restore it into that ignored runtime path before starting the service. This release removes the old tracked account file. Existing account IDs and password hashes are retained; all users sign in again to establish revocable sessions. See [migration and test deployment notes](docs/security-reliability-test.md) for migration and rollback details.
 
 ## Docker Architecture
 
@@ -226,7 +230,7 @@ Map features include:
 
 ```bash
 cd backend
-npm install
+npm ci
 cp .env.example .env
 # Edit .env with your credentials
 npm run dev  # Uses nodemon for auto-reload
@@ -238,11 +242,17 @@ The backend will start on `http://localhost:3001`
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev  # Vite dev server with HMR
 ```
 
 The frontend will start on `http://localhost:5173`
+
+## Validation
+
+Run `npm ci` followed by `npm test` separately in `backend/` and `frontend/`. Run `npm run build` in `frontend/` to verify the production bundle. Run `npm audit --omit=dev` in each directory to check production dependencies.
+
+Regression tests cover account/session security, concurrent account changes, ACC login recovery, stale inventory, token renewal, camera statistics filtering, thumbnail cleanup, and PDF export.
 
 ## Project Structure
 
@@ -325,8 +335,10 @@ avigilon-dashboard/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/logout` | Logout user |
+| POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/auth/me` | Get current user info |
+| PUT | `/api/auth/profile` | Update your profile |
+| PUT | `/api/auth/profile/password` | Change your password and revoke your sessions |
 
 ### User Management Routes (Admin Only)
 
@@ -343,6 +355,9 @@ avigilon-dashboard/
 |--------|----------|-------------|
 | GET | `/api/health` | Health check (public) |
 | GET | `/api/test-connection` | Test ACC connection |
+| GET | `/api/server` | Get ACC server information |
+| GET | `/api/cache/status` | Get inventory cache age and refresh status |
+| POST | `/api/cache/refresh` | Refresh inventory; retain last successful data on failure |
 | GET | `/api/server/ids` | Get server IDs |
 | GET | `/api/servers` | Get all servers |
 | GET | `/api/servers/:serverId` | Get server details |
@@ -399,7 +414,11 @@ These backend routes are retained for research, but recording headroom/capacity 
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `PORT` | Server port (default: 3001) | No |
-| `NODE_ENV` | Environment (development/production) | No |
+| `NODE_ENV` | Environment (development/production); Docker uses production | No |
+| `JWT_SECRET` | Random access-token signing secret, at least 32 characters | Yes |
+| `JWT_REFRESH_SECRET` | Different random refresh-token signing secret, at least 32 characters | Yes |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Initial admin password, 12 characters minimum and 72 bytes maximum; remove after account creation | New account store only |
+| `TRUST_PROXY` | Set to `1` only behind the single trusted proxy; standard Compose sets this for nginx | No |
 | `ACC_SERVER_URL` | ACC server URL with port | Yes |
 | `ACC_USERNAME` | ACC username | Yes |
 | `ACC_PASSWORD` | ACC password | Yes |
@@ -429,12 +448,12 @@ These backend routes are retained for research, but recording headroom/capacity 
 
 1. **Never commit `.env` files** — Keep your credentials secure
 2. **Use HTTPS in production** — Enable SSL/TLS for both frontend and backend
-3. **User Authentication** — JWT-based authentication with 15-minute access tokens
+3. **User Authentication** — 15-minute access tokens renew within a seven-day persisted session. Logout revokes the current session; password changes, role changes, and account deletion revoke all sessions for that account.
 4. **Password Security** — Passwords hashed with bcrypt (10 salt rounds)
-5. **Rate limiting** — Implemented for API endpoints
+5. **Rate limiting** — API limits plus a separate limit of 20 failed login attempts per 15 minutes per client IP
 6. **CORS configuration** — Update allowed origins for production
-7. **Default Admin** — Change the default admin password after first login
-8. **Cloud credentials** — The token-fetcher runs on an internal Docker network; cloud credentials never leave the server
+7. **Account storage** — No default password. Back up the ignored `backend/src/data/users.json`, which contains users and sessions, before upgrading. Run only one backend process against this file. The last administrator cannot be deleted or demoted.
+8. **Cloud credentials** — The token-fetcher runs on an internal Docker network; cloud credentials are used server-side to sign in to Avigilon Cloud
 9. **ArcGIS credentials** — The ArcGIS API key stays backend-side and is never exposed directly to the frontend
 
 ## Troubleshooting
@@ -490,9 +509,13 @@ These backend routes are retained for research, but recording headroom/capacity 
 4. Check backend logs for ArcGIS 403/404 errors
 5. Click **Refresh** on the Map page after ArcGIS item or API key changes
 
-### Authentication Failed
+### Dashboard Sign-In or Startup Fails
 
-**Problem:** 401 or authentication errors
+Sign in again after upgrading or after a password/role change. Existing account passwords are preserved. If the backend refuses to start, check that both signing secrets are configured, distinct, and at least 32 characters. A new account store also requires `BOOTSTRAP_ADMIN_PASSWORD`; an existing installation must restore its account backup before starting.
+
+### ACC Authentication Failed
+
+**Problem:** The dashboard cannot authenticate to ACC
 
 **Solutions:**
 1. Verify `ACC_USER_NONCE` and `ACC_USER_KEY` are correct
@@ -584,5 +607,8 @@ The ACC Web Endpoint Service must be installed on the same system as your ACC Se
 - [ ] `backend/.env` configured with credentials
 - [ ] Containers built: `docker compose build`
 - [ ] Containers running: `docker compose up -d`
-- [ ] Application accessible at http://localhost or https://localhost
-- [ ] Default admin password changed
+- [ ] TLS certificate and key installed; dashboard HTTPS origin allowed
+- [ ] Application accessible at its configured HTTPS hostname
+- [ ] Distinct random signing secrets configured
+- [ ] Existing account store backed up before upgrade, or new admin created with a private bootstrap password
+- [ ] Bootstrap password removed from the environment after account creation
