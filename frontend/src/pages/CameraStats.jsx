@@ -98,7 +98,7 @@ const CameraStats = () => {
   }, []);
 
   // Reset sort to IP when detail view changes
-  useEffect(() => { setSortCol('ip'); setSortDir('asc'); }, [offlineOpen, devicesOfflineOpen, migratedOpen, devicesOnlineOpen, viewsOnlineOpen, selectedModel]);
+  useEffect(() => { setSortCol('ip'); setSortDir('asc'); }, [offlineOpen, devicesOfflineOpen, migratedOpen, devicesOnlineOpen, viewsOnlineOpen, selectedMfr, selectedGen, selectedModel]);
 
   const pctText = (count, total) => total > 0 ? `${((count / total) * 100).toFixed(2)}%` : '0.00%';
 
@@ -285,49 +285,29 @@ const CameraStats = () => {
   let detailCameras = [];
   let detailTitle = '';
   let detailDotColor = null;
-  if (selectedMfr && selectedModel) {
-    const modelIdx = mfrModelBreakdown.findIndex(([m]) => m === selectedModel);
-    detailDotColor = COLORS[modelIdx % COLORS.length];
-    let base = mfrCameras.filter(c => (c.model || c.deviceModel || 'Unknown') === selectedModel);
-    if (viewsOnlineOpen) {
-      base = base.filter(c => c.connectionState === 'CONNECTED');
-    } else if (devicesOnlineOpen) {
-      base = base.filter(c => c.connectionState === 'CONNECTED');
-      const seen = new Set();
-      base = base.filter(c => { const k = deviceKey(c); if (seen.has(k)) return false; seen.add(k); return true; });
-    } else if (offlineOpen || devicesOfflineOpen) {
-      base = base.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
-      if (devicesOfflineOpen) {
-        const seen = new Set();
-        base = base.filter(c => { const k = deviceKey(c); if (seen.has(k)) return false; seen.add(k); return true; });
-        base = base.map(c => ({ ...c, _displayName: stripChannelSuffix(c.name || c.deviceName || '') || 'Unnamed' }));
-      }
+  if (viewsOnlineOpen || devicesOnlineOpen || offlineOpen || devicesOfflineOpen || selectedMfr) {
+    // The table and breakdown share the same status/device pool and drill-down.
+    detailCameras = selectedMfr ? modelSourceCameras : mfrPoolBase;
+    if (selectedModel) {
+      detailCameras = detailCameras.filter(c => (c.model || c.deviceModel || 'Unknown') === selectedModel);
     }
-    detailCameras = base;
-    detailTitle = selectedModel;
-  } else if (viewsOnlineOpen) {
-    detailCameras = nonMigratedCameras.filter(c => c.connectionState === 'CONNECTED');
-    detailTitle = 'Camera Views Online';
-    detailDotColor = onlineColor.bar;
-  } else if (devicesOnlineOpen) {
-    const seen = new Set();
-    detailCameras = nonMigratedCameras.filter(c => {
-      if (c.connectionState !== 'CONNECTED') return false;
-      const key = deviceKey(c);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    detailTitle = 'Camera Devices Online';
-    detailDotColor = deviceColor.bar;
-  } else if (offlineOpen) {
-    detailCameras = nonMigratedCameras.filter(c => c.connectionState && c.connectionState !== 'CONNECTED');
-    detailTitle = 'Camera Views Offline';
-    detailDotColor = '#ef4444';
-  } else if (devicesOfflineOpen) {
-    detailCameras = offlineDeviceCameras;
-    detailTitle = 'Camera Devices Offline';
-    detailDotColor = '#dc2626';
+    if (devicesOfflineOpen) {
+      detailCameras = detailCameras.map(c => ({
+        ...c,
+        _displayName: stripChannelSuffix(c.name || c.deviceName || '') || 'Unnamed',
+      }));
+    }
+
+    const statusTitle = viewsOnlineOpen ? 'Camera Views Online'
+      : devicesOnlineOpen ? 'Camera Devices Online'
+      : offlineOpen ? 'Camera Views Offline'
+      : devicesOfflineOpen ? 'Camera Devices Offline' : '';
+    detailTitle = [statusTitle, selectedMfr, selectedGen, selectedModel].filter(Boolean).join(' — ');
+    detailDotColor = viewsOnlineOpen ? onlineColor.bar
+      : devicesOnlineOpen ? deviceColor.bar
+      : offlineOpen ? '#ef4444'
+      : devicesOfflineOpen ? '#dc2626'
+      : COLORS[mfrBreakdown.findIndex(([m]) => m === selectedMfr) % COLORS.length];
   } else if (migratedOpen) {
     detailCameras = cameras.filter(c => isMigrated(c));
     detailTitle = 'Migrated (Stale) Cameras';
@@ -662,7 +642,7 @@ const CameraStats = () => {
                   <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">By Manufacturer</h2>
                   {selectedMfr && (
                     <button
-                      onClick={() => { setSelectedMfr(null); setSelectedModel(null); }}
+                      onClick={() => { setSelectedMfr(null); setSelectedGen(null); setSelectedModel(null); }}
                       className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                     >
                       <X className="h-3 w-3" /> Clear
@@ -840,7 +820,7 @@ const CameraStats = () => {
             )}
 
             {/* ── Camera detail table ────────────────────────────────────────── */}
-            {(viewsOnlineOpen || devicesOnlineOpen || offlineOpen || devicesOfflineOpen || migratedOpen || selectedModel) && detailCameras.length > 0 && (
+            {(viewsOnlineOpen || devicesOnlineOpen || offlineOpen || devicesOfflineOpen || migratedOpen || selectedMfr) && detailCameras.length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/50 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-2">
