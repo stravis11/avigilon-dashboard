@@ -38,3 +38,13 @@ ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCo
 ```
 
 The tunnel serves the deployed frontend on gtpd-synopta, not a local development build. The server certificate is not trusted by the in-app browser; any certificate exception must be handled by the user in their browser. HTTP checks through the tunnel returned 200 for the app and healthy status for the backend, and the served index matched the verified build's SHA-256 hash.
+
+### In-app preview without a certificate exception
+
+The test Compose configuration also publishes an HTTP listener on **server loopback only**, `127.0.0.1:9080`. Forward it over SSH from the Mac:
+
+```sh
+ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:9080:127.0.0.1:9080 gtpd-synopta.police.gatech.edu
+```
+
+Open http://127.0.0.1:9080/camera-stats in the preview. Both the deployed frontend and its API requests travel over the encrypted SSH connection. The normal HTTPS endpoint is unchanged; the HTTP listener is not published on an external server interface.
