@@ -28,3 +28,13 @@ docker start avigilon-frontend
 ```
 
 For acceptance, select each of the four summary cards, then select a manufacturer, a generation (Avigilon), and a model. Check that the table title and rows follow each selection. Clear or toggle each selection to restore the broader list. Device cards should collapse multiple views with the same IP into one row. Main should only be updated after user acceptance.
+
+## Access from this Mac
+
+Direct connections from this Mac to the server's HTTPS port also time out. An SSH tunnel was opened for testing at https://localhost:9443/camera-stats. Reopen it if necessary with:
+
+```sh
+ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:9443:127.0.0.1:443 gtpd-synopta.police.gatech.edu
+```
+
+The tunnel serves the deployed frontend on gtpd-synopta, not a local development build. The server certificate is not trusted by the in-app browser; any certificate exception must be handled by the user in their browser. HTTP checks through the tunnel returned 200 for the app and healthy status for the backend, and the served index matched the verified build's SHA-256 hash.
